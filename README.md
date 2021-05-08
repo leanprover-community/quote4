@@ -86,6 +86,10 @@ using the `quote` macro.
 - This has almost certainly been done before
   somewhere else, by somebody else.
 
+- Pick another name.
+  There is already a `Lean.Quote` type,
+  which means something slightly different.
+
 - Pattern matching.
   In a pure context,
   without access to `MetaM`,
