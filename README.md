@@ -48,6 +48,20 @@ There are many things going on here:
 1. The second argument, `quote 42`,
    correctly constructs an expression of type `Int`.
 
+Because `betterApp`
+takes `α` and `u` (and `β` and `v`) as arguments,
+it can also perform more interesting tasks:
+for example,
+we can change `quote f a` into `quote id f a`
+without changing the interface
+(even though the resulting expression
+now contains both the type and the universe level).
+
+The arguments do not need to refer
+to concrete types like `Int` either:
+`List ((u : Level) × (α : quote Sort u) × List (quote (Option α)))`
+does what you think it does!
+
 ## Implementation
 
 The type family on which this package is built is called `QQ`:
