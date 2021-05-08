@@ -116,4 +116,8 @@ using the `quote` macro.
 - `by exact quote _` does not produce an error
   (and you don't get to see the type of the underscore).
 
+- Integration with `MetaM`,
+  such as an `inferType` variant
+  returning a quote.
+
 - Other bug fixes, documentation, and assorted polishing.
