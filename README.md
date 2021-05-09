@@ -81,6 +81,25 @@ The `QQ` type is almost impossible to use manually.
 You should only interact with it
 using the `quote` macro.
 
+## Comparison
+
+Template Haskell provides a similar mechanism
+for type-safe quotations,
+writing `Q Int` for an expression of type `Int`.
+This is subtly different
+to the `QQ` type family considered here:
+in Lean notation,
+TH's family has the type `Q : Type u → Type`,
+while ours has the type `QQ : Expr → Type`.
+In Lean, `Q` is not sufficiently expressive
+due to universe polymorphism:
+we might only know at runtime which universe the type is in,
+but `Q` version fixes the universe at compile time.
+Another lack of expressivity concerns dependent types:
+a telescope such as `{α : Q Type} (a : Q α)` is not well-typed
+with the `Q` constructor,
+because `α` is not a type.
+
 ## To do
 
 - This has almost certainly been done before
