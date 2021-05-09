@@ -23,8 +23,4 @@ jobs:
         run: leanpkg build
 
       - name: run examples
-        run: |
-          set -ex
-          for ex in examples/*.lean; do
-            env LEAN_PATH=build lean $ex
-          done
+        run: leanmake examples
