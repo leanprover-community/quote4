@@ -240,10 +240,10 @@ def Impl.macro (t : Syntax) (expectedType : Expr) (capitalized : Bool) : TermEla
   -- logInfo $ toString (← instantiateMVars (mkMVar mvars.back))
   instantiateMVars (mkMVar mvars.back)
 
-scoped elab "q(" t:term ")" : term <= expectedType =>
+scoped elab (name := q) "q(" t:term ")" : term <= expectedType =>
   Impl.macro t expectedType (capitalized := false)
 
-scoped elab "Q(" t:term ")" : term <= expectedType =>
+scoped elab (name := Q) "Q(" t:term ")" : term <= expectedType =>
   Impl.macro t expectedType (capitalized := true)
 
 -- support `QQ (← foo) ∨ False`
