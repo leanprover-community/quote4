@@ -185,7 +185,7 @@ scoped elab "quote" t:term : term <= expectedType => do
   for mvar in mvars do
     let mdecl ← Lean.Elab.Term.getMVarDecl mvar
     if !(lctx.isSubPrefixOf mdecl.lctx && mdecl.lctx.isSubPrefixOf lctx) then
-      throwError "incompatible metavariable {mvar} {MessageData.ofGoal mvar}"
+      throwError "incompatible metavariable {mvar}\n{MessageData.ofGoal mvar}"
 
     let ty ← whnf mdecl.type
     let ty ← instantiateMVars ty
@@ -241,3 +241,13 @@ scoped elab "quote" t:term : term <= expectedType => do
 
   -- logInfo $ toString (← instantiateMVars (mkMVar mvars.back))
   instantiateMVars (mkMVar mvars.back)
+
+-- support `quote (← foo) ∨ False`
+macro_rules
+  | `(quote $t) => do
+    let (lifts, t) ← Do.ToCodeBlock.expandLiftMethod t
+    if lifts.isEmpty then Macro.throwUnsupported
+    let mut t ← `(quote $t)
+    for lift in lifts do
+      t ← `(have $(lift[2][0]):ident := $(lift[2][3][0]); $t)
+    t

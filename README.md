@@ -117,12 +117,11 @@ because `α` is not a type.
   since e.g. type class arguments will
   typically require unfolding to match.
 
-- `quote (← frob a) ∨ b`.
-  For now, `let fa := frob a; quote fa ∨ b`
-  is a reasonable workaround.
+- `quote Type (← myLevelFun a)`.
+  And maybe use `$` instead of `←`.
 
 - When the local context contains a hypothesis
-  like `h : let fa := frob a; quote fa ∨ b`,
+  like `quote (← frob a) ∨ b`,
   then `quote` will usually fail with
   `reduceEval: failed to evaluate argument (frob a).1`.
   The case `a.1` is already supported,
