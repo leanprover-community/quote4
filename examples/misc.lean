@@ -1,21 +1,21 @@
-import Quote
-open Lean Quote
+import Qq
+open Lean Qq
 
-def bar {α : quote Type u} (a : quote α) : quote Prop := quote a = a
-def bar2 {α : quote Sort u} (a : quote α) : quote a = a := quote by simp
+def bar {α : QQ Type u} (a : QQ α) : QQ Prop := qq a = a
+def bar2 {α : QQ Sort u} (a : QQ α) : QQ a = a := qq by simp
 
-def baz (u : Level) : Type := quote Sort u
+def baz (u : Level) : Type := QQ Sort u
 
-#eval bar2 (quote [1,2, 4])
+#eval bar2 (qq [1,2, 4])
 
-#check quote ∀ x, x = x + 0
+#check qq ∀ x, x = x + 0
 
-example {α : quote Type u} (inst : quote Inhabited α) : quote ∃ x : α, x = x :=
-  quote ⟨arbitrary, by rfl⟩
+example {α : QQ Type u} (inst : QQ Inhabited α) : QQ ∃ x : α, x = x :=
+  qq ⟨arbitrary, by rfl⟩
 
-example : quote let x := 5; x = x := quote by simp
+example : QQ let x := 5; x = x := qq by simp
 
-#eval show quote ∀ n : UInt64, n.val = n.val from quote fun _ => by simp
+#eval show QQ ∀ n : UInt64, n.val = n.val from qq fun _ => by simp
 
-def foo' (n : Nat) : quote quote n = n := quote quote by simp
+def foo' (n : Nat) : QQ QQ n = n := qq qq by simp
 #eval foo' 3

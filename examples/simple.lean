@@ -1,9 +1,9 @@
-import Quote
-open Quote
+import Qq
+open Qq
 
 set_option trace.compiler.ir.result true in
-def betterApp {α : quote Sort u} {β : quote α → Sort v}
-  (f : quote (a : α) → β a) (a : quote α) : quote β a :=
-quote f a
+def betterApp {α : QQ Sort u} {β : QQ α → Sort v}
+  (f : QQ (a : α) → β a) (a : QQ α) : QQ β a :=
+qq f a
 
-#eval betterApp (quote Int.toNat) (quote 42)
+#eval betterApp (qq Int.toNat) (qq 42)

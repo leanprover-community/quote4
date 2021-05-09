@@ -1,7 +1,7 @@
 import Lean
 open Lean
 
-namespace Quote
+namespace Qq
 
 class Reflected (a : α) where
   reflected : Expr

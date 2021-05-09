@@ -1,10 +1,10 @@
 import Lean
-import Quote.ForLean.ReduceEval
-import Quote.Reflected
-import Quote.QQ
+import Qq.ForLean.ReduceEval
+import Qq.Reflected
+import Qq.Typ
 open Lean Meta Std
 
-namespace Quote
+namespace Qq
 
 namespace Impl
 
@@ -40,8 +40,8 @@ partial def evalLevel (levelSubst : HashMap MVarId Level) (e : Expr) : MetaM Lev
 
 partial def evalExpr (exprSubst : HashMap MVarId Expr) (levelSubst : HashMap MVarId Level) (e : Expr) : MetaM Expr := do
   if e.isAppOf ``reflected then return e.getArg! 1
-  if e.isAppOf ``QQ.quoted && (e.getArg! 1).isFVar then return e.getArg! 1
-  if e.isAppOf ``QQ.quoted && (e.getArg! 1).isMVar then
+  if e.isAppOf ``QQ'.quoted && (e.getArg! 1).isFVar then return e.getArg! 1
+  if e.isAppOf ``QQ'.quoted && (e.getArg! 1).isMVar then
     match exprSubst.find? (e.getArg! 1).mvarId! with
       | some e => return e
       | _ => ()
@@ -86,12 +86,12 @@ def unquoteLCtx (lctx : LocalContext) : MetaM (LocalContext × HashMap Expr Expr
     let fv := ldecl.toExpr
     let ty := ldecl.type
     let whnfTy ← whnf ty
-    if whnfTy.isAppOf ``QQ then
+    if whnfTy.isAppOf ``QQ' then
       let qTy := whnfTy.appArg!
       let newTy ← evalExpr exprMVarSubst levelMVarSubst qTy
       unquoted := unquoted.addDecl $
         LocalDecl.cdecl ldecl.index ldecl.fvarId ldecl.userName newTy ldecl.binderInfo
-      subst := subst.insert fv (mkApp2 (mkConst ``QQ.quoted) qTy fv)
+      subst := subst.insert fv (mkApp2 (mkConst ``QQ'.quoted) qTy fv)
     else if whnfTy.isAppOf ``Level then
       levelNames := ldecl.userName :: levelNames
     else
@@ -159,16 +159,17 @@ end Impl
 
 open Lean.Elab Lean.Elab.Tactic Lean.Elab.Term Impl
 
-scoped elab "quote" t:term : term <= expectedType => do
+def Impl.macro (t : Syntax) (expectedType : Expr) (capitalized : Bool) : TermElabM Expr := do
+
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
 
-  -- support `#check quote foo`
+  -- support `#check qq foo`
   if expectedType.isMVar then
     let u ← mkFreshExprMVar (mkConst ``Level)
     let u' := mkApp (mkConst ``mkSort) u
-    let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
-    let (true) ← isDefEq expectedType (mkApp (mkConst ``QQ) (mkApp2 (mkConst ``QQ.quoted) u' t)) |
+    let t ← mkFreshExprMVar (mkApp (mkConst ``QQ') u')
+    let (true) ← isDefEq expectedType (mkApp (mkConst ``QQ') (mkApp2 (mkConst ``QQ'.quoted) u' t)) |
       throwError "expected type unknown"
 
   let lctx ← getLCtx
@@ -189,19 +190,19 @@ scoped elab "quote" t:term : term <= expectedType => do
 
     let ty ← whnf mdecl.type
     let ty ← instantiateMVars ty
-    if ty.isAppOf ``QQ then
+    if ty.isAppOf ``QQ' && (!capitalized || mvar != lastId) then
       let et := ty.getArg! 0
       let newET ← evalExpr exprMVarSubst levelMVarSubst et
       let newMVar ← mkFreshExprMVarAt newLCtx newLocalInsts newET
       exprMVarSubst := exprMVarSubst.insert mvar newMVar
       mvarSynth := mvarSynth.push do
-        mkApp2 (mkConst ``QQ.mk) et (← quoteExpr subst (← instantiateMVars newMVar))
-    else if ty.isSort && mvar == lastId then
+        mkApp2 (mkConst ``QQ'.qq) et (← quoteExpr subst (← instantiateMVars newMVar))
+    else if ty.isSort && mvar == lastId && capitalized then
       let u ← mkFreshLevelMVar
       let newMVar ← mkFreshExprMVarAt newLCtx newLocalInsts (mkSort u)
       exprMVarSubst := exprMVarSubst.insert mvar newMVar
       mvarSynth := mvarSynth.push do
-        mkApp (mkConst ``QQ) (← quoteExpr subst (← instantiateMVars newMVar))
+        mkApp (mkConst ``QQ') (← quoteExpr subst (← instantiateMVars newMVar))
     else if ty.isAppOf ``Level && mvar != lastId then
       let newMVar ← mkFreshLevelMVar
       levelMVarSubst := levelMVarSubst.insert mvar newMVar
@@ -242,12 +243,26 @@ scoped elab "quote" t:term : term <= expectedType => do
   -- logInfo $ toString (← instantiateMVars (mkMVar mvars.back))
   instantiateMVars (mkMVar mvars.back)
 
--- support `quote (← foo) ∨ False`
+scoped elab "qq" t:term : term <= expectedType =>
+  Impl.macro t expectedType (capitalized := false)
+
+scoped elab "QQ" t:term : term <= expectedType =>
+  Impl.macro t expectedType (capitalized := true)
+
+-- support `QQ (← foo) ∨ False`
 macro_rules
-  | `(quote $t) => do
+  | `(QQ $t) => do
     let (lifts, t) ← Do.ToCodeBlock.expandLiftMethod t
     if lifts.isEmpty then Macro.throwUnsupported
-    let mut t ← `(quote $t)
+    let mut t ← `(QQ $t)
     for lift in lifts do
       t ← `(have $(lift[2][0]):ident := $(lift[2][3][0]); $t)
     t
+  | `(qq $t) => do
+    let (lifts, t) ← Do.ToCodeBlock.expandLiftMethod t
+    if lifts.isEmpty then Macro.throwUnsupported
+    let mut t ← `(qq $t)
+    for lift in lifts do
+      t ← `(have $(lift[2][0]):ident := $(lift[2][3][0]); $t)
+    t
+

@@ -1,7 +1,7 @@
-import Quote
-open Quote
+import Qq
+open Qq
 
-def mkPairwiseEquality {α : quote Sort u} : List (quote α) → quote Prop
-  | [a, b] => quote a = b
-  | a :: b :: cs => quote a = b ∧ (← mkPairwiseEquality (b :: cs))
-  | _ => quote True
+def mkPairwiseEquality {α : QQ Sort u} : List (QQ α) → QQ Prop
+  | [a, b] => qq a = b
+  | a :: b :: cs => qq a = b ∧ (← mkPairwiseEquality (b :: cs))
+  | _ => qq True
