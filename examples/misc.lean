@@ -1,21 +1,21 @@
 import Qq
 open Lean Qq
 
-def bar {α : QQ Type u} (a : QQ α) : QQ Prop := qq a = a
-def bar2 {α : QQ Sort u} (a : QQ α) : QQ a = a := qq by simp
+def bar {α : Q(Type u)} (a : Q(α)) : Q(Prop) := q(a = a)
+def bar2 {α : Q(Sort u)} (a : Q(α)) : Q(a = a) := q(by simp)
 
-def baz (u : Level) : Type := QQ Sort u
+def baz (u : Level) : Type := Q(Sort u)
 
-#eval bar2 (qq [1,2, 4])
+#eval bar2 q([1,2, 4])
 
-#check qq ∀ x, x = x + 0
+#check q(∀ x, x = x + 0)
 
-example {α : QQ Type u} (inst : QQ Inhabited α) : QQ ∃ x : α, x = x :=
-  qq ⟨arbitrary, by rfl⟩
+example {α : Q(Type u)} (inst : Q(Inhabited α)) : Q(∃ x : α, x = x) :=
+  q(⟨arbitrary, by rfl⟩)
 
-example : QQ let x := 5; x = x := qq by simp
+example : Q(let x := 5; x = x) := q(by simp)
 
-#eval show QQ ∀ n : UInt64, n.val = n.val from qq fun _ => by simp
+#eval show Q(∀ n : UInt64, n.val = n.val) from q(fun _ => by simp)
 
-def foo' (n : Nat) : QQ QQ n = n := qq qq by simp
+def foo' (n : Nat) : Q(Q(n = n)) := q(q(by simp))
 #eval foo' 3
