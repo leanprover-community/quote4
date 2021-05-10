@@ -136,9 +136,10 @@ def quoteLevelList : List Level → MetaM Expr
 
 def quoteExpr (s : HashMap Expr Expr) : Expr → MetaM Expr
   | Expr.bvar i _ => mkApp (mkConst ``mkBVar) (toExpr i)
-  | e@(Expr.fvar i _) => (s.find? e).getD $
-    mkApp (mkConst ``mkFVar) (toExpr i)
-  | Expr.mvar i _ => throwError "mvars not supported"
+  | e@(Expr.fvar i _) => do
+    let some r ← s.find? e | throwError "unknown free variable {e}"
+    r
+  | e@(Expr.mvar i _) => throwError "resulting term contains metavariable {e}"
   | Expr.sort u _ => do mkApp (mkConst ``mkSort) (← quoteLevel u)
   | Expr.const n ls _ => do mkApp2 (mkConst ``mkConst) (toExpr n) (← quoteLevelList ls)
   | Expr.app a b _ => do mkApp2 (mkConst ``mkApp) (← quoteExpr s a) (← quoteExpr s b)
