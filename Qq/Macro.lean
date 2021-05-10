@@ -253,12 +253,12 @@ macro_rules
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(Q($t))
     for lift in lifts do
-      t ← `(have $(lift[2][0]):ident := $(lift[2][3][0]); $t)
+      t ← `(let $(lift[2][0]):ident := $(lift[2][3][0]); $t)
     t
   | `(q($t)) => do
     let (lifts, t) ← Do.ToCodeBlock.expandLiftMethod t
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(q($t))
     for lift in lifts do
-      t ← `(have $(lift[2][0]):ident := $(lift[2][3][0]); $t)
+      t ← `(let $(lift[2][0]):ident := $(lift[2][3][0]); $t)
     t
