@@ -113,9 +113,6 @@ because `α` is not a type.
   since e.g. type class arguments will
   typically require unfolding to match.
 
-- `q(Type (← myLevelFun a))`.
-  And maybe use `$` instead of `←`.
-
 - `ql(imax u (v+1))`
 
 - Auto-bound implicit types

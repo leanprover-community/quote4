@@ -291,7 +291,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
 
   instantiateMVars (mkMVar mvars.back)
 
-scoped elab (name := q) "q(" t:term ")" : term <= expectedType => do
+scoped elab (name := Syntax_q) "q(" t:term ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
   let expectedType ← whnf expectedType
@@ -308,23 +308,55 @@ scoped elab (name := q) "q(" t:term ")" : term <= expectedType => do
 
   Impl.macro t expectedType
 
-scoped elab (name := Q) "Q(" t:term ")" : term <= expectedType => do
+scoped elab (name := Syntax_Q) "Q(" t:term ")" : term <= expectedType => do
   let u ← mkFreshLevelMVar
   let (true) ← isDefEq expectedType (mkSort u) |
     throwError "expected expected type Sort _, got {expectedType}"
   Impl.macro t expectedType
 
--- support `Q((← foo) ∨ False)`
+
+/-
+support `Q((← foo) ∨ False)`
+-/
+
+syntax "Type" "(" "←" term ")" : term
+syntax "Sort" "(" "←" term ")" : term
+
+private partial def expandLiftMethod : Syntax → StateT (List Syntax) MacroM Syntax
+  | stx@`(Q($x)) => stx
+  | stx@`(q($x)) => stx
+  | `(← $term) =>
+    withFreshMacroScope do
+      let term ← expandLiftMethod term
+      let auxDoElem ← `(doElem| let a ← $term:term)
+      modify fun s => s ++ [auxDoElem]
+      `(a)
+  | `(Type (← $term)) =>
+    withFreshMacroScope do
+      let term ← expandLiftMethod term
+      let auxDoElem ← `(doElem| let u ← $term:term)
+      modify fun s => s ++ [auxDoElem]
+      `(Type u)
+  | `(Sort (← $term)) =>
+    withFreshMacroScope do
+      let term ← expandLiftMethod term
+      let auxDoElem ← `(doElem| let u ← $term:term)
+      modify fun s => s ++ [auxDoElem]
+      `(Sort u)
+  | stx => match stx with
+    | Syntax.node k args => do Syntax.node k (← args.mapM expandLiftMethod)
+    | stx => stx
+
 macro_rules
   | `(Q($t)) => do
-    let (lifts, t) ← Do.ToCodeBlock.expandLiftMethod t
+    let (t, lifts) ← expandLiftMethod t []
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(Q($t))
     for lift in lifts do
       t ← `(let $(lift[2][0]):ident := $(lift[2][3][0]); $t)
     t
   | `(q($t)) => do
-    let (lifts, t) ← Do.ToCodeBlock.expandLiftMethod t
+    let (t, lifts) ← expandLiftMethod t []
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(q($t))
     for lift in lifts do

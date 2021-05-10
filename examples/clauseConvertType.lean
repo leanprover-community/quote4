@@ -9,12 +9,12 @@ def orLevel : (ps : List ((u : Level) × Q(Type u))) → Level
   | [] => levelZero
   | ⟨u, p⟩ :: ps => mkLevelMax u (orLevel ps)
 
-def or1 : (ps : List ((u : Level) × Q(Type u))) → let u' := orLevel ps; Q(Type u')
+def or1 : (ps : List ((u : Level) × Q(Type u))) → Q(Type (← orLevel ps))
   | [] => q(Empty)
   | [⟨u, p⟩] => q(p)
   | ⟨u, p⟩::ps => q(Sum p (← or1 ps))
 
-def or2 : (ps : List ((u : Level) × Q(Type u))) → let u' := orLevel ps; Q(Type u')
+def or2 : (ps : List ((u : Level) × Q(Type u))) → Q(Type (← orLevel ps))
   | [] => q(Empty)
   | ⟨u, p⟩ :: ps => q(Sum p (← or2 ps))
 
