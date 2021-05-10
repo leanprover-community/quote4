@@ -118,19 +118,13 @@ because `α` is not a type.
 
 - `ql(imax u (v+1))`
 
-- When the local context contains a hypothesis
-  like `q((← frob a) ∨ b)`,
-  then `q(·)` will usually fail with
-  `reduceEval: failed to evaluate argument (frob a).1`.
-  The case `a.1` is already supported,
-  it could be enough to generalize the subterm in the hypothesis.
-
 - Auto-bound implicit types
   send Lean into an infinite loop
   (not universes though).
 
 - `by exact q(_)` does not produce an error
   (and you don't get to see the type of the underscore).
+  This is a known Lean 4 bug: https://github.com/leanprover/lean4/issues/449
 
 - Integration with `MetaM`,
   such as an `inferType` variant
