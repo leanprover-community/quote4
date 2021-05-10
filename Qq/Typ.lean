@@ -5,7 +5,7 @@ namespace Qq
 
 structure QQ (α : Expr) where qq ::
   quoted : Expr
-  deriving BEq, Hashable
+  deriving BEq, Hashable, Inhabited
 
 instance : ToString (QQ α) where
   toString q := toString q.quoted
