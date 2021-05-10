@@ -278,7 +278,7 @@ scoped elab (name := Q) "Q(" t:term ")" : term <= expectedType => do
     throwError "expected expected type Sort _, got {expectedType}"
   Impl.macro t expectedType
 
--- support `QQ (← foo) ∨ False`
+-- support `Q((← foo) ∨ False)`
 macro_rules
   | `(Q($t)) => do
     let (lifts, t) ← Do.ToCodeBlock.expandLiftMethod t
