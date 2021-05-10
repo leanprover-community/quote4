@@ -14,11 +14,6 @@ def or2 : List Q(Prop) → Q(Prop)
   | [] => q(False)
   | p::ps => q(p ∨ (← or2 ps))
 
-theorem Or.elim {c : Prop} {a b : Prop} (h : a ∨ b) (h1 : a → c) (h2 : b → c) : c := by
-  induction h
-  apply h1; assumption
-  apply h2; assumption
-
 def orChange : (ps : List Q(Prop)) → Q((← or1 ps) → (← or2 ps))
   | [] => q(id)
   | [p] => by
@@ -31,4 +26,8 @@ def orChange : (ps : List Q(Prop)) → Q((← or1 ps) → (← or2 ps))
     generalize hx : or1 (ps1 :: ps2) = x
     generalize hy : or2 ps2 = y
     intro this
-    exact q(fun h => h.elim Or.inl (fun p => Or.inr (this p)))
+    exact q(by
+      intro h
+      cases h with
+        | inl h => exact Or.inl h
+        | inr h => exact Or.inr (this h))
