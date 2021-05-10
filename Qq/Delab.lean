@@ -12,10 +12,14 @@ private def failureOnError (x : MetaM α) : DelabM α := do
     | some a => a
     | none => failure
 
+private def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
+  unquoteLCtx
+  let newE ← unquoteExpr e
+  (newE, (← get).unquoted)
+
 def delabQuoted : Delab := do
   let e ← getExpr
-  let newE ← failureOnError $ evalExpr HashMap.empty HashMap.empty e
-  let (newLCtx, subst, levelNames) ← failureOnError $ unquoteLCtx (← getLCtx)
+  let ((newE, newLCtx), _) ← failureOnError $ (unquote e).run {}
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
     withReader (fun cfg => { cfg with expr := newE }) delab
 
