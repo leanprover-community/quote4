@@ -1,6 +1,6 @@
 import Lean
 import Qq.ForLean.ReduceEval
-import Qq.ForLean.ToExpr
+import Qq.Reflected
 import Qq.Typ
 open Lean Meta Std
 
@@ -39,7 +39,7 @@ partial def evalLevel (levelSubst : HashMap MVarId Level) (e : Expr) : MetaM Lev
     | _, _ => throwFailedToEval e
 
 partial def evalExpr (exprSubst : HashMap MVarId Expr) (levelSubst : HashMap MVarId Level) (e : Expr) : MetaM Expr := do
-  if e.isAppOf ``toExpr then return e.getArg! 2
+  if e.isAppOf ``reflected then return e.getArg! 1
   if e.isAppOf ``QQ.quoted && (e.getArg! 1).isFVar then return e.getArg! 1
   if e.isAppOf ``QQ.quoted && (e.getArg! 1).isMVar then
     match exprSubst.find? (e.getArg! 1).mvarId! with
@@ -94,11 +94,11 @@ def unquoteLCtx (lctx : LocalContext) : MetaM (LocalContext × HashMap Expr Expr
       subst := subst.insert fv (mkApp2 (mkConst ``QQ.quoted) qTy fv)
     else if whnfTy.isAppOf ``Level then
       levelNames := ldecl.userName :: levelNames
-    else do
-      let Level.succ u _ ← getLevel ty | ()
-      let LOption.some inst ← trySynthInstance (mkApp (mkConst ``ToExpr [u]) ty) | ()
+    else
+      let u ← getLevel ty
+      let LOption.some inst ← trySynthInstance (mkApp2 (mkConst ``Reflected [u]) ty fv) | ()
       unquoted := unquoted.addDecl ldecl
-      subst := subst.insert fv (mkApp3 (mkConst ``toExpr [u]) ty inst fv)
+      subst := subst.insert fv (mkApp3 (mkConst ``reflected [u]) ty fv inst)
   (unquoted, subst, levelNames)
 
 def determineLocalInstances (lctx : LocalContext) : MetaM LocalInstances := do
@@ -135,22 +135,22 @@ def quoteLevelList : List Level → MetaM Expr
       (← quoteLevel l) (← quoteLevelList ls)
 
 def quoteExpr (s : HashMap Expr Expr) : Expr → MetaM Expr
-  | Expr.bvar i _ => mkApp (mkConst ``mkBVar) (toExpr i)
+  | Expr.bvar i _ => mkApp (mkConst ``mkBVar) (reflected i)
   | e@(Expr.fvar i _) => do
     let some r ← s.find? e | throwError "unknown free variable {e}"
     r
   | e@(Expr.mvar i _) => throwError "resulting term contains metavariable {e}"
   | Expr.sort u _ => do mkApp (mkConst ``mkSort) (← quoteLevel u)
-  | Expr.const n ls _ => do mkApp2 (mkConst ``mkConst) (toExpr n) (← quoteLevelList ls)
+  | Expr.const n ls _ => do mkApp2 (mkConst ``mkConst) (reflected n) (← quoteLevelList ls)
   | Expr.app a b _ => do mkApp2 (mkConst ``mkApp) (← quoteExpr s a) (← quoteExpr s b)
   | Expr.lam n t b d => do
-    mkApp4 (mkConst ``mkLambda) (toExpr n) (toExpr d.binderInfo) (← quoteExpr s t) (← quoteExpr s b)
+    mkApp4 (mkConst ``mkLambda) (reflected n) (reflected d.binderInfo) (← quoteExpr s t) (← quoteExpr s b)
   | Expr.forallE n t b d => do
-    mkApp4 (mkConst ``mkForall) (toExpr n) (toExpr d.binderInfo) (← quoteExpr s t) (← quoteExpr s b)
+    mkApp4 (mkConst ``mkForall) (reflected n) (reflected d.binderInfo) (← quoteExpr s t) (← quoteExpr s b)
   | Expr.letE n t v b d => do
-    mkApp5 (mkConst ``mkLet) (toExpr n) (← quoteExpr s t) (← quoteExpr s v) (← quoteExpr s b) (toExpr d.nonDepLet)
-  | Expr.lit l _ => mkApp (mkConst ``mkLit) (toExpr l)
-  | Expr.proj n i e _ => do mkApp3 (mkConst ``mkProj) (toExpr n) (toExpr i) (← quoteExpr s e)
+    mkApp5 (mkConst ``mkLet) (reflected n) (← quoteExpr s t) (← quoteExpr s v) (← quoteExpr s b) (reflected d.nonDepLet)
+  | Expr.lit l _ => mkApp (mkConst ``mkLit) (reflected l)
+  | Expr.proj n i e _ => do mkApp3 (mkConst ``mkProj) (reflected n) (reflected i) (← quoteExpr s e)
   | e => throwError "quoteExpr todo {e}"
 
 end Impl
