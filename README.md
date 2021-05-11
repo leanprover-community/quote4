@@ -62,6 +62,21 @@ to concrete types like `Int` either:
 `List ((u : Level) × (α : Q(Sort u)) × List Q(Option α))`
 does what you think it does!
 
+In fact it is a crucial feature
+that we can write metaprograms
+transforming terms of nonconcrete types
+in inconsistent contexts:
+```lean
+def tryProve (n : Q(Nat)) (i : Q(Fin n)) : Option Q(i > 0) := ...
+```
+If the `i > 0` in the return type were a concrete type in the metalanguage,
+then we could not call `tryProve` with `n := 0`
+(because we would need to provide a value for `i : Fin 0`).
+Furthermore,
+if `n` were a concrete value,
+then we could not call `tryProve` on
+the subterm `t` of `fun n : Nat => t`.
+
 ## Implementation
 
 The type family on which this package is built is called `QQ`:
