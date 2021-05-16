@@ -320,26 +320,26 @@ support `Q((← foo) ∨ False)`
 syntax "Type" "(" "←" term ")" : term
 syntax "Sort" "(" "←" term ")" : term
 
-private partial def expandLiftMethod : Syntax → StateT (List Syntax) MacroM Syntax
+private partial def expandLiftMethod : Syntax → StateT (Array $ Syntax × Syntax) MacroM Syntax
   | stx@`(Q($x)) => stx
   | stx@`(q($x)) => stx
   | `(← $term) =>
     withFreshMacroScope do
       let term ← expandLiftMethod term
-      let auxDoElem ← `(doElem| let a ← $term:term)
-      modify fun s => s ++ [auxDoElem]
-      `(a)
+      let a ← `(a)
+      modify fun s => s.push (a, term)
+      a
   | `(Type (← $term)) =>
     withFreshMacroScope do
       let term ← expandLiftMethod term
-      let auxDoElem ← `(doElem| let u ← $term:term)
-      modify fun s => s ++ [auxDoElem]
+      let u ← `(u)
+      modify fun s => s.push (u, term)
       `(Type u)
   | `(Sort (← $term)) =>
     withFreshMacroScope do
       let term ← expandLiftMethod term
-      let auxDoElem ← `(doElem| let u ← $term:term)
-      modify fun s => s ++ [auxDoElem]
+      let u ← `(u)
+      modify fun s => s.push (u, term)
       `(Sort u)
   | stx => match stx with
     | Syntax.node k args => do Syntax.node k (← args.mapM expandLiftMethod)
@@ -347,16 +347,16 @@ private partial def expandLiftMethod : Syntax → StateT (List Syntax) MacroM Sy
 
 macro_rules
   | `(Q($t)) => do
-    let (t, lifts) ← expandLiftMethod t []
+    let (t, lifts) ← expandLiftMethod t #[]
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(Q($t))
-    for lift in lifts do
-      t ← `(let $(lift[2][0]):ident := $(lift[2][3][0]); $t)
+    for (a, lift) in lifts do
+      t ← `(let $a:ident := $lift; $t)
     t
   | `(q($t)) => do
-    let (t, lifts) ← expandLiftMethod t []
+    let (t, lifts) ← expandLiftMethod t #[]
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(q($t))
-    for lift in lifts do
-      t ← `(let $(lift[2][0]):ident := $(lift[2][3][0]); $t)
+    for (a, lift) in lifts do
+      t ← `(let $a:ident := $lift; $t)
     t
