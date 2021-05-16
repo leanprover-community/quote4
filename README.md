@@ -138,8 +138,4 @@ because `α` is not a type.
   (and you don't get to see the type of the underscore).
   This is a known Lean 4 bug: https://github.com/leanprover/lean4/issues/449
 
-- Integration with `MetaM`,
-  such as an `inferType` variant
-  returning a quote.
-
 - Other bug fixes, documentation, and assorted polishing.
