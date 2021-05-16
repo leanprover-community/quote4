@@ -254,6 +254,9 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
 
   (exprMVarSubst, mvarSynth)
 
+def lctxHasMVar : MetaM Bool := do
+  (← getLCtx).anyM fun decl => do (← instantiateLocalDeclMVars decl).hasExprMVar
+
 end Impl
 
 open Lean.Elab Lean.Elab.Tactic Lean.Elab.Term Impl
@@ -294,25 +297,20 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
 scoped elab (name := Syntax_q) "q(" t:term ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
-  let expectedType ← whnf expectedType
-
-  if expectedType.isMVar then
-    -- support `#check q(foo)`
-    let u ← mkFreshExprMVar (mkConst ``Level)
-    let u' := mkApp (mkConst ``mkSort) u
-    let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
-    let (true) ← isDefEq expectedType (mkApp (mkConst ``QQ) (mkApp2 (mkConst ``QQ.quoted) u' t)) |
-      throwError "expected type unknown"
-  else if !expectedType.isAppOfArity ``QQ 1 then
-    throwError "expected expected type Q(.), got {expectedType}"
-
-  Impl.macro t expectedType
+  ensureHasType expectedType $ ← commitIfDidNotPostpone do
+    let mut expectedType ← whnf expectedType
+    if !expectedType.isAppOfArity ``QQ 1 then
+      let u ← mkFreshExprMVar (mkConst ``Level)
+      let u' := mkApp (mkConst ``mkSort) u
+      let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
+      expectedType := mkApp (mkConst ``QQ) (mkApp2 (mkConst ``QQ.quoted) u' t)
+    Impl.macro t expectedType
 
 scoped elab (name := Syntax_Q) "Q(" t:term ")" : term <= expectedType => do
-  let u ← mkFreshLevelMVar
-  let (true) ← isDefEq expectedType (mkSort u) |
-    throwError "expected expected type Sort _, got {expectedType}"
-  Impl.macro t expectedType
+  let expectedType ← instantiateMVars expectedType
+  let (true) ← isDefEq expectedType (mkSort (mkLevelSucc levelZero)) |
+    throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
+  commitIfDidNotPostpone do Impl.macro t expectedType
 
 
 /-
