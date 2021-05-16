@@ -7,6 +7,9 @@ structure QQ (α : Expr) where qq ::
   quoted : Expr
   deriving BEq, Hashable, Inhabited
 
+unif_hint (q : QQ t) (e : Expr) where
+  q =?= QQ.qq e ⊢ q.quoted =?= e
+
 attribute [class] QQ
 
 protected constant QQ.qq' {α : Expr} (t : Expr) : QQ α := ⟨t⟩
