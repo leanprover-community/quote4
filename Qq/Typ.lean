@@ -7,6 +7,10 @@ structure QQ (α : Expr) where qq ::
   quoted : Expr
   deriving BEq, Hashable, Inhabited
 
+attribute [class] QQ
+
+protected constant QQ.qq' {α : Expr} (t : Expr) : QQ α := ⟨t⟩
+
 instance : ToString (QQ α) where
   toString q := toString q.quoted
 
