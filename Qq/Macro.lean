@@ -317,8 +317,8 @@ scoped elab (name := Syntax_Q) "Q(" t:term ")" : term <= expectedType => do
 support `Q((← foo) ∨ False)`
 -/
 
-syntax "Type" "(" "←" term ")" : term
-syntax "Sort" "(" "←" term ")" : term
+scoped syntax "Type" "(" "←" term ")" : term
+scoped syntax "Sort" "(" "←" term ")" : term
 
 private partial def expandLiftMethod : Syntax → StateT (Array $ Syntax × Syntax) MacroM Syntax
   | stx@`(Q($x)) => stx
