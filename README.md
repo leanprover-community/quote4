@@ -120,14 +120,6 @@ because `α` is not a type.
 - This has almost certainly been done before
   somewhere else, by somebody else.
 
-- Pattern matching.
-  In a pure context,
-  without access to `MetaM`,
-  we can only match the expression literally.
-  I don't think this is particularly useful,
-  since e.g. type class arguments will
-  typically require unfolding to match.
-
 - `ql(imax u (v+1))`
 
 - Auto-bound implicit types

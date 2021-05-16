@@ -172,7 +172,7 @@ abbrev QuoteM := ReaderT UnquoteState MetaM
 def quoteLevel : Level → QuoteM Expr
   | Level.zero _ => mkConst ``levelZero
   | Level.succ u _ => do mkApp (mkConst ``mkLevelSucc) (← quoteLevel u)
-  | Level.mvar n _ => throwError "level mvars not supported"
+  | l@(Level.mvar n _) => throwError "level mvars not supported {l}"
   | Level.max a b _ => do mkApp2 (mkConst ``mkLevelMax) (← quoteLevel a) (← quoteLevel b)
   | Level.imax a b _ => do mkApp2 (mkConst ``mkLevelIMax) (← quoteLevel a) (← quoteLevel b)
   | l@(Level.param n _) => do
