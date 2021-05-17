@@ -126,8 +126,4 @@ because `α` is not a type.
   send Lean into an infinite loop
   (not universes though).
 
-- `by exact q(_)` does not produce an error
-  (and you don't get to see the type of the underscore).
-  This is a known Lean 4 bug: https://github.com/leanprover/lean4/issues/449
-
 - Other bug fixes, documentation, and assorted polishing.
