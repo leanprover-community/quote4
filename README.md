@@ -127,7 +127,7 @@ because `α` is not a type.
 ```lean
 match e with
   | ~q(∃ x, p x) =>
-    ~q(∀ x, p x) -- p : Q(x✝ → Prop)
+     q(∀ x, p x) -- p : Q(x✝ → Prop)
   | _ => e
 ```
   <!--
