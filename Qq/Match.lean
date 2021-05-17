@@ -17,18 +17,18 @@ def PatVarDecl.fvarTy : PatVarDecl → Q(Type)
   | { ty := none, .. } => q(Level)
   | { ty := some _, .. } => q(Expr)
 
-def PatVarDecl.fvar (decl : PatVarDecl) : Q(← decl.fvarTy) :=
+def PatVarDecl.fvar (decl : PatVarDecl) : Q(%(decl.fvarTy)) :=
   ⟨mkFVar decl.fvarId⟩
 
 def mkIsDefEqType : List PatVarDecl → Q(Type)
   | [] => q(Bool)
-  | decl :: decls => q((← decl.fvarTy) × (← mkIsDefEqType decls))
+  | decl :: decls => q(%(decl.fvarTy) × %(mkIsDefEqType decls))
 
-def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q(← mkIsDefEqType decls)
+def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q(%(mkIsDefEqType decls))
   | [] => q(val)
-  | decl :: decls => q(((← decl.fvar), (← mkIsDefEqResult val decls)))
+  | decl :: decls => q((%(decl.fvar), %(mkIsDefEqResult val decls)))
 
-def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q(← mkIsDefEqType decls) → Q(Bool)
+def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q(%(mkIsDefEqType decls)) → Q(Bool)
   | [], val => q(val)
   | decl :: decls, val => mkIsDefEqResultVal decls q(val.2)
 
@@ -41,44 +41,44 @@ def mkLet' (n : Name) (fvar : Expr) (ty : Expr) (val : Expr) (body : Expr) : Exp
 def mkLambdaQ (n : Name) (fvar : QQ α) (body : QQ β) : QQ (mkForall n BinderInfo.default α β) :=
   ⟨mkLambda n BinderInfo.default α (body.quoted.abstract #[fvar])⟩
 
-def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → Q(MetaM (← mkIsDefEqType decls))
-  | [] => q(← mkIsDefEqResult true decls)
+def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → Q(MetaM %(mkIsDefEqType decls))
+  | [] => q(%(mkIsDefEqResult true decls))
   -- https://github.com/leanprover/lean4/issues/471
   | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
-    let rest : Q(Level → MetaM (← mkIsDefEqType decls)) :=
-      mkLambdaQ _ decl.fvar q(← mkInstantiateMVars decls rest)
-    q(Bind.bind (instantiateLevelMVars (← decl.fvar)) rest)
+    q(Bind.bind (instantiateLevelMVars %(decl.fvar))
+      %(show Q(Level → MetaM %(mkIsDefEqType decls)) from
+        mkLambdaQ _ decl.fvar q(%(mkInstantiateMVars decls rest))))
   | { ty := some ty, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
-    let rest : Q(Expr → MetaM (← mkIsDefEqType decls)) :=
-      mkLambdaQ _ decl.fvar q(← mkInstantiateMVars decls rest)
-    q(Bind.bind (instantiateMVars (← decl.fvar)) rest)
+    q(Bind.bind (instantiateMVars %(decl.fvar))
+      %(show Q(Expr → MetaM %(mkIsDefEqType decls)) from
+        mkLambdaQ _ decl.fvar q(%(mkInstantiateMVars decls rest))))
 
 def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
-    List PatVarDecl → Q(MetaM (← mkIsDefEqType decls))
+    List PatVarDecl → Q(MetaM %(mkIsDefEqType decls))
   | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
-    q(Bind.bind mkFreshLevelMVar (← mkLambdaQ `x decl.fvar (mkIsDefEqCore decls pat discr rest)))
+    q(Bind.bind mkFreshLevelMVar %(mkLambdaQ `x decl.fvar (mkIsDefEqCore decls pat discr rest)))
   | { ty := some ty, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
-    q(Bind.bind (mkFreshExprMVar ty) (← mkLambdaQ `x decl.fvar (mkIsDefEqCore decls pat discr rest)))
+    q(Bind.bind (mkFreshExprMVar ty) %(mkLambdaQ `x decl.fvar (mkIsDefEqCore decls pat discr rest)))
   | [] => q(do
       let matches ← withReducible $ isDefEq pat discr
       if matches then
-        (← mkInstantiateMVars decls decls)
+        %(mkInstantiateMVars decls decls)
       else
-        (← mkIsDefEqResult false decls))
+        %(mkIsDefEqResult false decls))
 
-def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : Q(MetaM (← mkIsDefEqType decls)) :=
-  q(withNewMCtxDepth (← mkIsDefEqCore decls pat discr decls))
+def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : Q(MetaM %(mkIsDefEqType decls)) :=
+  q(withNewMCtxDepth %(mkIsDefEqCore decls pat discr decls))
 
 def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLCtx m] {α : Q(Sort u)} {β : Q(Sort v)}
     (fvarId : FVarId) (userName : Name) (val : Q(α)) (k : Q(α) → m Q(β)) : m Q(β) := do
   withExistingLocalDecls [LocalDecl.cdecl (← getLCtx).decls.size fvarId userName α BinderInfo.default] do
     QQ.qq $ ← mkLet' userName (mkFVar fvarId) α val (← k ⟨mkFVar fvarId⟩)
 
-def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q(← mkIsDefEqType decls) → TermElabM Q(γ) → TermElabM Q(γ)
+def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q(%(mkIsDefEqType decls)) → TermElabM Q(γ) → TermElabM Q(γ)
   | { ty := none, fvarId := fvarId, userName := userName } :: decls, acc, cb =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
     withLetHave fvarId userName (α := q(Level)) q(acc.1) fun fvar => mkQqLets decls q(acc.2) cb
@@ -97,18 +97,18 @@ def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
 
 def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} [Q(MonadLiftT MetaM m)] [Q(Bind m)]
     (decls : List PatVarDecl) (pat discr : Q(Expr)) (alt : Q(m γ)) (k : TermElabM Q(m γ)) : TermElabM Q(m γ) := do
-  let isDefEqPart := mkIsDefEq decls pat discr
   let nextDecls : List PatVarDecl :=
     decls.map fun decl => { decl with ty := decl.ty.map fun ⟨e⟩ => ⟨replaceTempExprsByQVars decls e⟩ }
   let next ← withLocalDeclD (← mkFreshBinderName) (mkIsDefEqType decls) fun fv => do
-    let mkIsDefEqTypeDecls : Q(Type) := mkIsDefEqType decls
-    let fv : Q(mkIsDefEqTypeDecls) := ⟨fv⟩
-    let next : Q(m γ) ← mkQqLets nextDecls ⟨fv⟩ k
-    let matches : Q(Bool) := mkIsDefEqResultVal decls fv
-    let next : Q(m γ) := q(if matches then next else alt)
-    show Q(mkIsDefEqTypeDecls → m γ) from
+    let fv : Q(%(mkIsDefEqType decls)) := ⟨fv⟩
+    let next : Q(m γ) :=
+      q(if %(mkIsDefEqResultVal decls fv) then
+          %(← mkQqLets nextDecls ⟨fv⟩ k)
+        else
+          alt)
+    show Q(%(mkIsDefEqType decls) → m γ) from
       QQ.qq $ mkLambda' `result fv (mkIsDefEqType decls) next
-  pure q(Bind.bind isDefEqPart next)
+  pure q(Bind.bind %(mkIsDefEq decls pat discr) next)
 
 def unquoteQQMVar (mvar : MVarId) : UnquoteM Expr := do
   unquoteLCtx

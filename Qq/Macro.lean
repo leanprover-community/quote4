@@ -314,24 +314,25 @@ scoped elab (name := Syntax_Q) "Q(" t:term ")" : term <= expectedType => do
 
 
 /-
-support `Q((← foo) ∨ False)`
+support `Q(%(foo) ∨ False)`
 -/
 
-scoped syntax "Type" "(" "←" term ")" : term
-scoped syntax "Sort" "(" "←" term ")" : term
+scoped syntax "%(" term ")" : term
+scoped syntax "Type" "%(" term ")" : term
+scoped syntax "Sort" "%(" term ")" : term
 
 private partial def expandLiftMethod : Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
   | stx@`(Q($x)) => stx
   | stx@`(q($x)) => stx
-  | `(← $term) =>
+  | `(%($term)) =>
     withFreshMacroScope do
       push (← `(a)) (← `(QQ _)) (← expandLiftMethod term)
       `(a)
-  | `(Type (← $term)) =>
+  | `(Type %($term)) =>
     withFreshMacroScope do
       push (← `(u)) (← `(Level)) (← expandLiftMethod term)
       `(Type u)
-  | `(Sort (← $term)) =>
+  | `(Sort %($term)) =>
     withFreshMacroScope do
       push (← `(u)) (← `(Level)) (← expandLiftMethod term)
       `(Sort u)
