@@ -320,43 +320,41 @@ support `Q((← foo) ∨ False)`
 scoped syntax "Type" "(" "←" term ")" : term
 scoped syntax "Sort" "(" "←" term ")" : term
 
-private partial def expandLiftMethod : Syntax → StateT (Array $ Syntax × Syntax) MacroM Syntax
+private partial def expandLiftMethod : Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
   | stx@`(Q($x)) => stx
   | stx@`(q($x)) => stx
   | `(← $term) =>
     withFreshMacroScope do
-      let term ← expandLiftMethod term
-      let a ← `(a)
-      modify fun s => s.push (a, term)
-      a
+      push (← `(a)) (← `(QQ _)) (← expandLiftMethod term)
+      `(a)
   | `(Type (← $term)) =>
     withFreshMacroScope do
-      let term ← expandLiftMethod term
-      let u ← `(u)
-      modify fun s => s.push (u, term)
+      push (← `(u)) (← `(Level)) (← expandLiftMethod term)
       `(Type u)
   | `(Sort (← $term)) =>
     withFreshMacroScope do
-      let term ← expandLiftMethod term
-      let u ← `(u)
-      modify fun s => s.push (u, term)
+      push (← `(u)) (← `(Level)) (← expandLiftMethod term)
       `(Sort u)
   | stx => match stx with
     | Syntax.node k args => do Syntax.node k (← args.mapM expandLiftMethod)
     | stx => stx
+
+  where
+    push i t l : StateT (Array $ Syntax × Syntax × Syntax) MacroM Unit :=
+      modify fun s => s.push (i, t, l)
 
 macro_rules
   | `(Q($t)) => do
     let (t, lifts) ← expandLiftMethod t #[]
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(Q($t))
-    for (a, lift) in lifts do
-      t ← `(let $a:ident := $lift; $t)
+    for (a, ty, lift) in lifts do
+      t ← `(let $a:ident : $ty := $lift; $t)
     t
   | `(q($t)) => do
     let (t, lifts) ← expandLiftMethod t #[]
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(q($t))
-    for (a, lift) in lifts do
-      t ← `(let $a:ident := $lift; $t)
+    for (a, ty, lift) in lifts do
+      t ← `(let $a:ident : $ty := $lift; $t)
     t
