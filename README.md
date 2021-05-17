@@ -122,6 +122,21 @@ because `α` is not a type.
 
 - `ql(imax u (v+1))`
 
+- Higher-order matching.
+  Maybe something like this:
+```lean
+match e with
+  | ~q(∃ x, p x) =>
+    ~q(∀ x, p x) -- p : Q(x✝ → Prop)
+  | _ => e
+```
+  <!--
+  This almost works, it only needs a type annotation:
+  match e with
+    | ~q(∃ x, (p : (_ : _) → _) x) => q(∀ x, p x)
+    | _ => e
+  -->
+
 - Auto-bound implicit types
   send Lean into an infinite loop
   (not universes though).
