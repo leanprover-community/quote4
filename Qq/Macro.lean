@@ -75,6 +75,19 @@ partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
 def mkAbstractedName (e : Expr) : MetaM Name :=
   e.getAppFn.constName?.getD `dummy
 
+@[inline] constant betaRev' (e : Expr) (revArgs : List Expr) : Expr :=
+  e.betaRev revArgs.toArray
+
+mutual
+partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
+  let e ← whnf e
+  if e.isAppOfArity ``List.nil 1 then
+    []
+  else if e.isAppOfArity ``List.cons 3 then
+    (← unquoteExpr (e.getArg! 1)) :: (← unquoteExprList (e.getArg! 2))
+  else
+    throwFailedToEval e
+
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if e.isAppOf ``reflect then return e.getArg! 2
   let e ← whnf e
@@ -100,6 +113,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   let Expr.const c _ _ ← pure e.getAppFn | throwError "unquoteExpr: {e}"
   let nargs := e.getAppNumArgs
   match c, nargs with
+    | ``betaRev', 2 => betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
     | ``Expr.bvar, 2 => mkBVar (← reduceEval (e.getArg! 0))
     | ``Expr.fvar, 2 => mkFVar (← reduceEval (e.getArg! 0))
     | ``Expr.mvar, 2 => mkMVar (← reduceEval (e.getArg! 0))
@@ -121,6 +135,8 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     | ``Expr.proj, 4 =>
       mkProj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
     | _, _ => throwError "unquoteExpr: {e}"
+
+end
 
 def unquoteLCtx : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
@@ -190,7 +206,7 @@ def quoteLevelList : List Level → QuoteM Expr
     mkApp3 (mkConst ``List.cons [levelZero]) (mkConst ``Level)
       (← quoteLevel l) (← quoteLevelList ls)
 
-def quoteExpr : Expr → QuoteM Expr
+partial def quoteExpr : Expr → QuoteM Expr
   | Expr.bvar i _ => mkApp (mkConst ``mkBVar) (reflect i)
   | e@(Expr.fvar i _) => do
     let some r ← (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
@@ -198,7 +214,15 @@ def quoteExpr : Expr → QuoteM Expr
   | e@(Expr.mvar i _) => throwError "resulting term contains metavariable {e}"
   | Expr.sort u _ => do mkApp (mkConst ``mkSort) (← quoteLevel u)
   | Expr.const n ls _ => do mkApp2 (mkConst ``mkConst) (reflect n) (← quoteLevelList ls)
-  | Expr.app a b _ => do mkApp2 (mkConst ``mkApp) (← quoteExpr a) (← quoteExpr b)
+  | e@(Expr.app _ _ _) => do
+    let fn ← quoteExpr e.getAppFn
+    let args ← e.getAppArgs.mapM quoteExpr
+    if e.getAppFn.isFVar then -- TODO make configurable
+      mkApp2 (mkConst ``betaRev') fn $
+        args.foldl (flip $ mkApp3 (mkConst ``List.cons [levelZero]) (mkConst ``Expr))
+          (mkApp (mkConst ``List.nil [levelZero]) (mkConst ``Expr))
+    else
+      pure $ args.foldl (mkApp2 (mkConst ``mkApp)) fn
   | Expr.lam n t b d => do
     mkApp4 (mkConst ``mkLambda) (reflect n) (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
   | Expr.forallE n t b d => do
