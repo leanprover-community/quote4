@@ -138,7 +138,12 @@ def provePositive {α : Q(Type u)} [Q(OrderedSemiring α)] : (a : Q(α)) → Q(a
 ```
 
 - Matching should provide control over type-class diamonds, such as
-  `~q((a + b : α) where instance Semiring α; commutes with ∀ n, OfNat α n; a + a defEq 0)`.
+```lean
+~q((a + b : α) where
+  Semiring α
+  commutes ∀ n, OfNat α n
+  a + a defEq 0)
+```
 
 - Auto-bound implicit types
   send Lean into an infinite loop
