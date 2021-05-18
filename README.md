@@ -122,20 +122,14 @@ because `α` is not a type.
 
 - `ql(imax u (v+1))`
 
-- Higher-order matching.
+- Automatically create free variables for recursion.
   Maybe something like this:
 ```lean
-match e with
-  | ~q(∃ x, p x) =>
-     q(∀ x, p x) -- p : Q(x✝ → Prop)
-  | _ => e
+def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
+  | ~q(∃ x, p x) => do
+     q(∀ x, %(x => turnExistsIntoForall q(p x)))
+  | e => e
 ```
-  <!--
-  This almost works, it only needs a type annotation:
-  match e with
-    | ~q(∃ x, (p : (_ : _) → _) x) => q(∀ x, p x)
-    | _ => e
-  -->
 
 - Auto-bound implicit types
   send Lean into an infinite loop

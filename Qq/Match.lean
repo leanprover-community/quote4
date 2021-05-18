@@ -130,6 +130,33 @@ def unquoteQQMVar (mvar : MVarId) : UnquoteM Expr := do
   else
     throwError "unsupported type {ty}"
 
+partial def getArityOf (n : Name) (pat : Syntax) : Nat := do
+  match pat with
+    | `($n':ident $args:term*) => do
+      if n'.getId == n then
+        return args.size
+    | _ => ()
+
+  pat.getArgs.foldr (fun s a => do a.max (← getArityOf n s)) 0
+
+def mkNAryFunctionType : Nat → MetaM Expr
+  | 0 => mkFreshTypeMVar
+  | n+1 => do withLocalDeclD `x (← mkFreshTypeMVar) fun x => do
+    mkForallFVars #[x] (← mkNAryFunctionType n)
+
+def makeIntoNAryFunction (n : Expr) (arity : Nat) : MetaM Unit := do
+  let ty ← instantiateMVars (← inferType n)
+  if ty.isMVar then
+    try
+      let _ ← isDefEq ty (← mkNAryFunctionType arity)
+    catch _ =>
+      ()
+
+def setupHoPatVar (n : Expr) (pat : Syntax) : MetaM Unit := do
+  let arity := getArityOf (← getLocalDecl n.fvarId!).userName pat
+  unless arity == 0 do
+    makeIntoNAryFunction n arity
+
 scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : term <= expectedType => do
   let emr ← extractBind expectedType
   let alt : Expr ← elabTermEnsuringType alt expectedType
@@ -148,6 +175,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
   let (patVarDecls, newLevels) ← withLCtx lastDecl.lctx lastDecl.localInstances do
     withLevelNames s.levelNames do resettingSynthInstanceCache do
       withoutAutoBoundImplicit do withAutoBoundImplicit do
+        for patVar in (← addAutoBoundImplicits #[]) do setupHoPatVar patVar pat
         let pat ← Lean.Elab.Term.elabTerm pat lastDecl.type
         let patVars ← addAutoBoundImplicits #[]
         withoutAutoBoundImplicit do
