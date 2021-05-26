@@ -224,11 +224,13 @@ partial def quoteExpr : Expr → QuoteM Expr
     else
       pure $ args.foldl (mkApp2 (mkConst ``mkApp)) fn
   | Expr.lam n t b d => do
-    mkApp4 (mkConst ``mkLambda) (reflect n) (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
+    mkApp4 (mkConst ``mkLambda) (reflect $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
+      (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
   | Expr.forallE n t b d => do
-    mkApp4 (mkConst ``mkForall) (reflect n) (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
+    mkApp4 (mkConst ``mkForall) (reflect $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
+      (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
   | Expr.letE n t v b d => do
-    mkApp5 (mkConst ``mkLet) (reflect n) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (reflect d.nonDepLet)
+    mkApp5 (mkConst ``mkLet) (reflect n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (reflect d.nonDepLet)
   | Expr.lit l _ => mkApp (mkConst ``mkLit) (reflect l)
   | Expr.proj n i e _ => do mkApp3 (mkConst ``mkProj) (reflect n) (reflect i) (← quoteExpr e)
   | e => throwError "quoteExpr todo {e}"
