@@ -224,7 +224,7 @@ partial def quoteExpr : Expr → QuoteM Expr
     else
       pure $ args.foldl (mkApp2 (mkConst ``mkApp)) fn
   | Expr.lam n t b d => do
-    mkApp4 (mkConst ``mkLambda) (reflect $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
+    mkApp4 (mkConst ``mkLambda) (reflect n.eraseMacroScopes)
       (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
   | Expr.forallE n t b d => do
     mkApp4 (mkConst ``mkForall) (reflect $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
