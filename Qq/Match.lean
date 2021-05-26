@@ -110,25 +110,11 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} [Q(MonadLiftT MetaM m)
       QQ.qq $ mkLambda' `result fv (mkIsDefEqType decls) next
   pure q(Bind.bind %(mkIsDefEq decls pat discr) next)
 
-def unquoteQQMVar (mvar : MVarId) : UnquoteM Expr := do
+def unquoteForMatch (et : Expr) : UnquoteM (LocalContext × LocalInstances × Expr) := do
   unquoteLCtx
-
-  let lctx ← getLCtx
-  let mdecl ← (← getMCtx).getDecl mvar
-
-  let ty ← whnf mdecl.type
-  let ty ← instantiateMVars ty
-  if ty.isAppOf ``QQ then
-    let et := ty.getArg! 0
-    let newET ← unquoteExpr et
-    let newLCtx := (← get).unquoted
-    let newLocalInsts ← determineLocalInstances newLCtx
-    let exprBackSubst := (← get).exprBackSubst
-    let newMVar ← mkFreshExprMVarAt newLCtx newLocalInsts newET
-    modify fun s => { s with exprSubst := s.exprSubst.insert (mkMVar mvar) newMVar }
-    newMVar
-  else
-    throwError "unsupported type {ty}"
+  let newET ← unquoteExpr et
+  let newLCtx := (← get).unquoted
+  (newLCtx, ← determineLocalInstances newLCtx, newET)
 
 partial def getArityOf (n : Name) (pat : Syntax) : Nat := do
   match pat with
@@ -157,29 +143,16 @@ def setupHoPatVar (n : Expr) (pat : Syntax) : MetaM Unit := do
   unless arity == 0 do
     makeIntoNAryFunction n arity
 
-scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : term <= expectedType => do
-  let emr ← extractBind expectedType
-  let alt : Expr ← elabTermEnsuringType alt expectedType
-
-  let argTyExpr ← mkFreshExprMVarQ q(Expr)
-  let e'ty := q(QQ argTyExpr)
-  let e' ← elabTermEnsuringTypeQ e e'ty
-  let argTyExpr ← instantiateMVarsQ argTyExpr
-
-  let lastId := (← mkFreshExprMVar e'ty).mvarId!
-  let (lastId, s) ← (unquoteQQMVar lastId).run {}
-
-  let lastId := lastId.mvarId!
-  let lastDecl ← Lean.Elab.Term.getMVarDecl lastId
-
-  let (patVarDecls, newLevels) ← withLCtx lastDecl.lctx lastDecl.localInstances do
-    withLevelNames s.levelNames do resettingSynthInstanceCache do
+def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
+    (levelNames : List Name) : TermElabM (Expr × Array LocalDecl × Array Name) :=
+  withLCtx lctx localInsts do
+    withLevelNames levelNames do resettingSynthInstanceCache do
       withoutAutoBoundImplicit do withAutoBoundImplicit do
         for patVar in (← addAutoBoundImplicits #[]) do setupHoPatVar patVar pat
-        let pat ← Lean.Elab.Term.elabTerm pat lastDecl.type
+        let pat ← Lean.Elab.Term.elabTerm pat ty
         let patVars ← addAutoBoundImplicits #[]
         withoutAutoBoundImplicit do
-          let pat ← ensureHasType lastDecl.type pat
+          let pat ← ensureHasType ty pat
           synthesizeSyntheticMVars false
           let pat ← instantiateMVars pat
 
@@ -189,7 +162,6 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
           setMCtx r.mctx
 
           let pat ← instantiateMVars pat
-          assignExprMVar lastId pat
 
           let mut newDecls := #[]
           for newMVar in ← getMVars pat do
@@ -200,7 +172,21 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
             assignExprMVar newMVar (mkFVar fvarId)
 
           withExistingLocalDecls newDecls.toList do
-            (← sortLocalDecls ((← patVars.mapM (fun e => do instantiateLocalDeclMVars (← getFVarLocalDecl e))) ++ newDecls), r.newParamNames)
+            (pat,
+              ← sortLocalDecls ((← patVars.mapM fun e => do
+                instantiateLocalDeclMVars (← getFVarLocalDecl e)) ++ newDecls),
+              r.newParamNames)
+
+scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : term <= expectedType => do
+  let emr ← extractBind expectedType
+  let alt ← elabTermEnsuringType alt expectedType
+
+  let argTyExpr ← mkFreshExprMVarQ q(Expr)
+  let e' ← elabTermEnsuringTypeQ e q(QQ argTyExpr)
+  let argTyExpr ← instantiateMVarsQ argTyExpr
+
+  let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run {}
+  let (pat, patVarDecls, newLevels) ← elabPat pat lctx localInsts type s.levelNames
 
   let mut s := s
   let mut oldPatVarDecls : List PatVarDecl := []
@@ -218,7 +204,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
   let γ : Q(Type) := QQ.qq' emr.α
   let inst : Q(Bind m) := QQ.qq' emr.hasBindInst
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM m)
-  let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars (mkMVar lastId)) s)
+  let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q(m γ) := ⟨alt⟩
   QQ.quoted $ ← makeMatchCode (γ := γ) (m := q(m)) oldPatVarDecls synthed q(e') q(alt) do
     QQ.qq (← elabTerm body expectedType)
