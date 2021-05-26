@@ -1,4 +1,4 @@
-import Qq
+import Qq.Macro
 open Qq
 
 /-!
@@ -17,7 +17,7 @@ def or2 : List Q(Prop) → Q(Prop)
 def orChange : (ps : List Q(Prop)) → Q(%(or1 ps) → %(or2 ps))
   | [] => q(id)
   | [p] => q(Or.inl)
-  | p::(ps1::ps2) => q(by
+  | p::(ps1::ps2) => by exact q(by
       intro h
       cases h with
         | inl h => exact Or.inl h
