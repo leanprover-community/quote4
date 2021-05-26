@@ -14,6 +14,8 @@ attribute [class] QQ
 
 protected constant QQ.qq' {α : Expr} (t : Expr) : QQ α := ⟨t⟩
 
+protected abbrev QQ.ty (t : QQ α) : Expr := α
+
 instance : ToString (QQ α) where
   toString q := toString q.quoted
 
