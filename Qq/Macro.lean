@@ -36,6 +36,10 @@ structure UnquoteState where
   -- maps free variables in the new context to levels in the old context (of type Level)
   levelBackSubst : HashMap Level Expr := {}
 
+  -- maps quoted whnfd expressions (of type QQ _)
+  -- to quoted expressions (of type Expr; obtained from isDefEq hypotheses)
+  exprRepl : HashMap Expr Expr := {}
+
   levelNames : List Name := []
 
 abbrev UnquoteM := StateT UnquoteState MetaM
@@ -93,7 +97,12 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   let e ← whnf e
   match e with
     | Expr.proj ``QQ 0 a _ =>
-      match (← get).exprSubst.find? a with
+      let a ← whnf a
+      match (← get).exprRepl.find? a with
+      | some e' =>
+          return ← unquoteExpr e'
+      | _ => ()
+        match (← get).exprSubst.find? a with
         | some e => return e
         | _ =>
           let ta ← inferType a
@@ -138,7 +147,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
 
 end
 
-def unquoteLCtx : UnquoteM Unit := do
+def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
@@ -156,6 +165,17 @@ def unquoteLCtx : UnquoteM Unit := do
       modify fun s => { s with
         levelNames := ldecl.userName :: s.levelNames
         levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
+      }
+    else if whnfTy.isAppOfArity ``Qq.isDefEq 3 then
+      unless gadgets do continue
+      let lhs ← whnf <|
+        match ← whnf <| mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 1) with
+          | Expr.proj ``QQ 0 a _ => a
+          | _ => whnfTy.getArg! 1
+      let rhs := mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 2)
+      if lhs.isFVar && rhs.containsFVar lhs.fvarId! then continue -- TODO larger cycles
+      modify fun s => { s with
+        exprRepl := s.exprRepl.insert lhs rhs
       }
     else
       let Level.succ u _ ← getLevel ty | ()

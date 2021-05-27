@@ -13,7 +13,7 @@ private def failureOnError (x : MetaM α) : DelabM α := do
     | none => failure
 
 private def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
-  unquoteLCtx
+  unquoteLCtx (gadgets := false)
   let newE ← unquoteExpr e
   (newE, (← get).unquoted)
 
