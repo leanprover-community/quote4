@@ -340,7 +340,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
 
   instantiateMVars (mkMVar mvars.back)
 
-scoped elab (name := Syntax_q) "q(" t:term ")" : term <= expectedType => do
+scoped elab "q(" t:incQuotDepth(term) ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
   ensureHasType expectedType $ ← commitIfDidNotPostpone do
@@ -352,7 +352,7 @@ scoped elab (name := Syntax_q) "q(" t:term ")" : term <= expectedType => do
       expectedType := mkApp (mkConst ``QQ) (mkApp2 (mkConst ``QQ.quoted) u' t)
     Impl.macro t expectedType
 
-scoped elab (name := Syntax_Q) "Q(" t:term ")" : term <= expectedType => do
+scoped elab "Q(" t:incQuotDepth(term) ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   let (true) ← isDefEq expectedType (mkSort (mkLevelSucc levelZero)) |
     throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
@@ -360,46 +360,47 @@ scoped elab (name := Syntax_Q) "Q(" t:term ")" : term <= expectedType => do
 
 
 /-
-support `Q(%(foo) ∨ False)`
+support `Q($(foo) ∨ False)`
 -/
 
-scoped syntax "%(" term ")" : term
-scoped syntax "Type" "%(" term ")" : term
-scoped syntax "Sort" "%(" term ")" : term
+private def push (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Unit :=
+  modify fun s => s.push (i, t, l)
 
-private partial def expandLiftMethod : Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
-  | stx@`(Q($x)) => stx
-  | stx@`(q($x)) => stx
-  | `(%($term)) =>
+private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax :=
+  if stx.isAntiquot && !stx.isEscapedAntiquot then
     withFreshMacroScope do
-      push (← `(a)) (← `(QQ _)) (← expandLiftMethod term)
-      `(a)
-  | `(Type %($term)) =>
-    withFreshMacroScope do
-      push (← `(u)) (← `(Level)) (← expandLiftMethod term)
-      `(Type u)
-  | `(Sort %($term)) =>
-    withFreshMacroScope do
-      push (← `(u)) (← `(Level)) (← expandLiftMethod term)
-      `(Sort u)
-  | stx => match stx with
-    | Syntax.node k args => do Syntax.node k (← args.mapM expandLiftMethod)
+      push (← `(u)) (← `(Level)) (← floatLevelAntiquot stx.getAntiquotTerm)
+      `(u)
+  else
+    match stx with
+    | Syntax.node k args => do Syntax.node k (← args.mapM floatLevelAntiquot)
     | stx => stx
 
-  where
-    push i t l : StateT (Array $ Syntax × Syntax × Syntax) MacroM Unit :=
-      modify fun s => s.push (i, t, l)
+private partial def floatExprAntiquot : Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
+  | stx@`(Q($x)) => stx
+  | stx@`(q($x)) => stx
+  | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
+  | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
+  | stx =>
+    if stx.isAntiquot && !stx.isEscapedAntiquot then
+      withFreshMacroScope do
+        push (← `(a)) (← `(QQ _)) (← floatExprAntiquot stx.getAntiquotTerm)
+        `(a)
+    else
+      match stx with
+      | Syntax.node k args => do Syntax.node k (← args.mapM floatExprAntiquot)
+      | stx => stx
 
 macro_rules
   | `(Q($t)) => do
-    let (t, lifts) ← expandLiftMethod t #[]
+    let (t, lifts) ← floatExprAntiquot t #[]
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(Q($t))
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     t
   | `(q($t)) => do
-    let (t, lifts) ← expandLiftMethod t #[]
+    let (t, lifts) ← floatExprAntiquot t #[]
     if lifts.isEmpty then Macro.throwUnsupported
     let mut t ← `(q($t))
     for (a, ty, lift) in lifts do

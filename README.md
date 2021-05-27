@@ -127,7 +127,7 @@ because `α` is not a type.
 ```lean
 def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
   | ~q(∃ x, p x) => do
-     q(∀ x, %(x => turnExistsIntoForall q(p x)))
+     q(∀ x, $(x => turnExistsIntoForall q(p x)))
   | e => e
 ```
 
