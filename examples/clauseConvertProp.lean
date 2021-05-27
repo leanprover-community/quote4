@@ -7,12 +7,12 @@ Type-safe conversion from proofs of `a ∨ b` to proofs of `a ∨ b ∨ false`.
 
 def or1 : List Q(Prop) → Q(Prop)
   | [] => q(False)
-  | [p] => q(p)
-  | p::ps => q(p ∨ $(or1 ps))
+  | [p] => q($p)
+  | p::ps => q($p ∨ $(or1 ps))
 
 def or2 : List Q(Prop) → Q(Prop)
   | [] => q(False)
-  | p::ps => q(p ∨ $(or2 ps))
+  | p::ps => q($p ∨ $(or2 ps))
 
 def orChange : (ps : List Q(Prop)) → Q($(or1 ps) → $(or2 ps))
   | [] => q(id)

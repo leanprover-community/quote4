@@ -34,9 +34,9 @@ open Qq
 
 set_option trace.compiler.ir.result true in
 
-def betterApp {α : Q(Sort u)} {β : Q(α → Sort v)}
-  (f : Q((a : α) → β a)) (a : Q(α)) : Q(β a) :=
-q(f a)
+def betterApp {α : Q(Sort u)} {β : Q($α → Sort v)}
+  (f : Q((a : α) → $β a)) (a : Q($α)) : Q($β $a) :=
+q($f $a)
 
 #eval betterApp q(Int.toNat) q(42)
 ```
@@ -59,7 +59,7 @@ now contains both the type and the universe level).
 
 The arguments do not need to refer
 to concrete types like `Int` either:
-`List ((u : Level) × (α : Q(Sort u)) × List Q(Option α))`
+`List ((u : Level) × (α : Q(Sort u)) × List Q(Option $α))`
 does what you think it does!
 
 In fact it is a crucial feature
@@ -67,7 +67,7 @@ that we can write metaprograms
 transforming terms of nonconcrete types
 in inconsistent contexts:
 ```lean
-def tryProve (n : Q(Nat)) (i : Q(Fin n)) : Option Q(i > 0) := ...
+def tryProve (n : Q(Nat)) (i : Q(Fin $n)) : Option Q($i > 0) := ...
 ```
 If the `i > 0` in the return type were a concrete type in the metalanguage,
 then we could not call `tryProve` with `n := 0`
@@ -127,7 +127,7 @@ because `α` is not a type.
 ```lean
 def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
   | ~q(∃ x, p x) => do
-     q(∀ x, $(x => turnExistsIntoForall q(p x)))
+     q(∀ x, $(x => turnExistsIntoForall q($p $x)))
   | e => e
 ```
 
@@ -144,3 +144,7 @@ def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
   (not universes though).
 
 - Other bug fixes, documentation, and assorted polishing.
+
+<!--
+Support q(q($$n = $$n)) again.
+-->
