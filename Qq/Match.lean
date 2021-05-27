@@ -123,42 +123,39 @@ def unquoteForMatch (et : Expr) : UnquoteM (LocalContext × LocalInstances × Ex
   let newLCtx := (← get).unquoted
   (newLCtx, ← determineLocalInstances newLCtx, newET)
 
-partial def getArityOf (n : Name) (pat : Syntax) : Nat := do
-  match pat with
-    | `($n':ident $args:term*) => do
-      if n'.getId == n then
-        return args.size
-    | _ => ()
-
-  pat.getArgs.foldr (fun s a => do a.max (← getArityOf n s)) 0
-
 def mkNAryFunctionType : Nat → MetaM Expr
   | 0 => mkFreshTypeMVar
   | n+1 => do withLocalDeclD `x (← mkFreshTypeMVar) fun x => do
     mkForallFVars #[x] (← mkNAryFunctionType n)
 
-def makeIntoNAryFunction (n : Expr) (arity : Nat) : MetaM Unit := do
-  let ty ← instantiateMVars (← inferType n)
-  if ty.isMVar then
-    try
-      let _ ← isDefEq ty (← mkNAryFunctionType arity)
-    catch _ =>
-      ()
+partial def getPatVars (pat : Syntax) : StateT (Array (Name × Nat × Expr)) TermElabM Syntax := do
+  match pat with
+    | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
+    | _ => if isPatVar pat then return ← mkMVar pat #[]
+  match pat with
+    | Syntax.node kind args => Syntax.node kind (← args.mapM getPatVars)
+    | pat => pat
 
-def setupHoPatVar (n : Expr) (pat : Syntax) : MetaM Unit := do
-  let arity := getArityOf (← getLocalDecl n.fvarId!).userName pat
-  unless arity == 0 do
-    makeIntoNAryFunction n arity
+  where
+
+    isPatVar (fn : Syntax) : Bool :=
+      fn.isAntiquot && !fn.isEscapedAntiquot && fn.getAntiquotTerm.isIdent &&
+      fn.getAntiquotTerm.getId.isAtomic
+
+    mkMVar (fn : Syntax) (args : Array Syntax) : StateT _ TermElabM Syntax := do
+      let args ← args.mapM getPatVars
+      withFreshMacroScope do
+        let mvar ← elabTerm (← `(?m)) (← mkNAryFunctionType args.size)
+        modify fun s => s.push (fn.getAntiquotTerm.getId, args.size, mvar)
+        `(?m $args*)
 
 def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
     (levelNames : List Name) : TermElabM (Expr × Array LocalDecl × Array Name) :=
   withLCtx lctx localInsts do
-    withLevelNames levelNames do resettingSynthInstanceCache do
-      withoutAutoBoundImplicit do withAutoBoundImplicit do
-        for patVar in (← addAutoBoundImplicits #[]) do setupHoPatVar patVar pat
-        let pat ← Lean.Elab.Term.elabTerm pat ty
-        let patVars ← addAutoBoundImplicits #[]
-        withoutAutoBoundImplicit do
+    withLevelNames levelNames do
+      resettingSynthInstanceCache do
+          let (pat, patVars) ← getPatVars pat #[]
+          let pat ← Lean.Elab.Term.elabTerm pat ty
           let pat ← ensureHasType ty pat
           synthesizeSyntheticMVars false
           let pat ← instantiateMVars pat
@@ -168,20 +165,27 @@ def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (
           let r := mctx.levelMVarToParam (fun n => levelNames.elem n) pat `u 1
           setMCtx r.mctx
 
-          let pat ← instantiateMVars pat
-
           let mut newDecls := #[]
+
+          for (patVar, nargs, mvar) in patVars do
+            assert! mvar.isMVar
+            let fvarId ← mkFreshId
+            let type ← inferType mvar
+            newDecls := newDecls.push $
+              LocalDecl.cdecl arbitrary fvarId patVar type BinderInfo.default
+            assignExprMVar mvar.mvarId! (mkFVar fvarId)
+
           for newMVar in ← getMVars pat do
             let fvarId ← mkFreshId
             let type ← instantiateMVars (← Meta.getMVarDecl newMVar).type
             let userName ← mkFreshBinderName
-            newDecls := newDecls.push $ LocalDecl.cdecl arbitrary fvarId userName type BinderInfo.default
+            newDecls := newDecls.push $
+              LocalDecl.cdecl arbitrary fvarId userName type BinderInfo.default
             assignExprMVar newMVar (mkFVar fvarId)
 
           withExistingLocalDecls newDecls.toList do
-            (pat,
-              ← sortLocalDecls ((← patVars.mapM fun e => do
-                instantiateLocalDeclMVars (← getFVarLocalDecl e)) ++ newDecls),
+            (← instantiateMVars pat,
+              ← sortLocalDecls (← newDecls.mapM fun d => instantiateLocalDeclMVars d),
               r.newParamNames)
 
 scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : term <= expectedType => do
@@ -254,7 +258,7 @@ section
 
 open Impl
 
-scoped syntax "~q(" term ")" : term
+scoped syntax "~q(" incQuotDepth(term) ")" : term
 
 partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($x)) => true
