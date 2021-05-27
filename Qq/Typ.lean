@@ -16,6 +16,8 @@ protected constant QQ.qq' {α : Expr} (t : Expr) : QQ α := ⟨t⟩
 
 protected abbrev QQ.ty (t : QQ α) : Expr := α
 
+protected structure isDefEq (t s : QQ α)
+
 instance : ToString (QQ α) where
   toString q := toString q.quoted
 

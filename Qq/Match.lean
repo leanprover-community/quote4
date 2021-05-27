@@ -7,8 +7,6 @@ open Parser.Term
 
 namespace Qq
 
-protected structure isDefEq (t s : QQ α)
-
 namespace Impl
 
 structure PatVarDecl where
@@ -232,7 +230,7 @@ partial def isIrrefutablePattern : Syntax → Bool
 scoped elab "_comefrom" n:ident "do" b:doElem ";" body:term : term <= expectedType => do
   let _ ← extractBind expectedType
   assignExprMVar (← elabTerm (← `(?m)) none).mvarId! expectedType
-  elabTerm (← `(let $n:ident : ?m := (do $b:doElem); $body)) expectedType
+  elabTerm (← `(have $n:ident : ?m := (do $b:doElem); $body)) expectedType
 
 scoped syntax "_comefrom" ident "do" doElem : term
 macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b; $body)
@@ -279,7 +277,13 @@ macro_rules
   | `(doElem| let $pat:term ← $rhs:doElem | $alt:doElem) => do
     if !hasQMatch pat then Macro.throwUnsupported
     match pat with
-      | `(~q($pat)) => `(doElem| do let rhs ← $rhs; assert! (_qq_match $pat ← rhs | $alt))
+      | `(~q($pat)) =>
+        match rhs with
+          | `(doElem| $id:ident $rhs:term) =>
+            if id.getId.eraseMacroScopes == `pure then -- TODO: super hacky
+              return ← `(doElem| do assert! (_qq_match $pat ← $rhs | $alt))
+          | _ => ()
+        `(doElem| do let rhs ← $rhs; assert! (_qq_match $pat ← rhs | $alt))
       | _ =>
         let (pat', auxs) ← floatQMatch (← `(doElem| alt)) pat []
         let items :=
@@ -302,7 +306,7 @@ macro_rules
     for pats in patss.reverse, rhs in rhss.reverse do
       let mut subItems : Array Syntax := #[]
       for discr in discrs, pat in pats do
-        subItems := subItems ++ (← mkLetDoSeqItem pat (← `(doElem| $discr:term)) (← `(doElem| alt)))
+        subItems := subItems ++ (← mkLetDoSeqItem pat (← `(doElem| pure $discr:term)) (← `(doElem| alt)))
       subItems := subItems.push (← `(doSeqItem| do $rhs))
       items := items.push (← `(doSeqItem| comefrom alt do do $subItems:doSeqItem*))
     items := items.push (← `(doSeqItem| alt))
