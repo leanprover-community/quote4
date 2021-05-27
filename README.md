@@ -131,12 +131,6 @@ def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
   | e => e
 ```
 
-- Matching should change the goal:
-```lean
-def provePositive {α : Q(Type u)} [Q(OrderedSemiring α)] : (a : Q(α)) → Q(a > 0)
-  | ~q(a + b) => q(add_pos_of_pos_of_pos ... ...)
-```
-
 - Matching should provide control over type-class diamonds, such as
 ```lean
 ~q((a + b : α) where
