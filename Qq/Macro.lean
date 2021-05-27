@@ -44,6 +44,19 @@ structure UnquoteState where
 
 abbrev UnquoteM := StateT UnquoteState MetaM
 
+open Name in
+def addDollar : Name → Name
+  | anonymous => mkStr anonymous "$"
+  | str n s _ => mkStr (addDollar n) s
+  | num n i _ => mkNum (addDollar n) i
+
+open Name in
+def removeDollar : Name → Option Name
+  | anonymous => none
+  | str anonymous "$" _ => some anonymous
+  | str n s _ => (removeDollar n).map (mkStr . s)
+  | num n i _ => (removeDollar n).map (mkNum . i)
+
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   e.getAppFn.constName?.getD `udummy
 
@@ -124,8 +137,8 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   match c, nargs with
     | ``betaRev', 2 => betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
     | ``Expr.bvar, 2 => mkBVar (← reduceEval (e.getArg! 0))
-    | ``Expr.fvar, 2 => mkFVar (← reduceEval (e.getArg! 0))
-    | ``Expr.mvar, 2 => mkMVar (← reduceEval (e.getArg! 0))
+    /- | ``Expr.fvar, 2 => mkFVar (← reduceEval (e.getArg! 0)) -/
+    /- | ``Expr.mvar, 2 => mkMVar (← reduceEval (e.getArg! 0)) -/
     | ``Expr.sort, 2 => mkSort (← unquoteLevel (e.getArg! 0))
     | ``Expr.const, 3 => mkConst (← reduceEval (e.getArg! 0)) (← unquoteLevelList (e.getArg! 1))
     | ``Expr.app, 3 => mkApp (← unquoteExpr (e.getArg! 0)) (← unquoteExpr (e.getArg! 1))
@@ -157,7 +170,7 @@ def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
       let newTy ← unquoteExpr qTy
       modify fun s => { s with
         unquoted := s.unquoted.addDecl $
-          LocalDecl.cdecl ldecl.index ldecl.fvarId ldecl.userName newTy ldecl.binderInfo
+          LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo
         exprBackSubst := s.exprBackSubst.insert fv (mkApp2 (mkConst ``QQ.quoted) qTy fv)
         exprSubst := s.exprSubst.insert fv fv
       }
@@ -181,7 +194,7 @@ def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
       let Level.succ u _ ← getLevel ty | ()
       let LOption.some inst ← trySynthInstance (mkApp (mkConst ``Reflect [u]) ty) | ()
       modify fun s => { s with
-        unquoted := s.unquoted.addDecl ldecl
+        unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
         exprBackSubst := s.exprBackSubst.insert fv (mkApp3 (mkConst ``reflect [u]) ty inst fv)
         exprSubst := s.exprSubst.insert fv fv
       }
@@ -366,6 +379,11 @@ support `Q($(foo) ∨ False)`
 private def push (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Unit :=
   modify fun s => s.push (i, t, l)
 
+private def addSyntaxDollar : Syntax → Syntax
+  | Syntax.ident info rawVal            val  preresolved =>
+    Syntax.ident info rawVal (addDollar val) preresolved
+  | stx => panic! "{stx}"
+
 private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax :=
   if stx.isAntiquot && !stx.isEscapedAntiquot then
     withFreshMacroScope do
@@ -383,25 +401,29 @@ private partial def floatExprAntiquot : Syntax → StateT (Array $ Syntax × Syn
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
   | stx =>
     if stx.isAntiquot && !stx.isEscapedAntiquot then
-      withFreshMacroScope do
-        push (← `(a)) (← `(QQ _)) (← floatExprAntiquot stx.getAntiquotTerm)
-        `(a)
+      let term := stx.getAntiquotTerm
+      if term.isIdent && term.getId.isAtomic then
+        addSyntaxDollar term
+      else
+        withFreshMacroScope do
+          push (← `(a)) (← `(QQ _)) term
+          addSyntaxDollar <|<- `(a)
     else
       match stx with
       | Syntax.node k args => do Syntax.node k (← args.mapM floatExprAntiquot)
       | stx => stx
 
 macro_rules
-  | `(Q($t)) => do
-    let (t, lifts) ← floatExprAntiquot t #[]
-    if lifts.isEmpty then Macro.throwUnsupported
+  | `(Q($t0)) => do
+    let (t, lifts) ← floatExprAntiquot t0 #[]
+    if lifts.isEmpty && t == t0 then Macro.throwUnsupported
     let mut t ← `(Q($t))
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     t
-  | `(q($t)) => do
-    let (t, lifts) ← floatExprAntiquot t #[]
-    if lifts.isEmpty then Macro.throwUnsupported
+  | `(q($t0)) => do
+    let (t, lifts) ← floatExprAntiquot t0 #[]
+    if lifts.isEmpty && t == t0 then Macro.throwUnsupported
     let mut t ← `(q($t))
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
