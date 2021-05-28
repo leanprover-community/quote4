@@ -144,7 +144,3 @@ def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
   (not universes though).
 
 - Other bug fixes, documentation, and assorted polishing.
-
-<!--
-Support q(q($$n = $$n)) again.
--->
