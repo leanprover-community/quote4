@@ -274,6 +274,52 @@ partial def Impl.floatQMatch (alt : Syntax) : Syntax → StateT (List Syntax) Ma
     | Syntax.node k args => Syntax.node k (← args.mapM (floatQMatch alt))
     | stx => stx
 
+private def push (i : Syntax) : StateT (Array Syntax) MacroM Unit :=
+  modify fun s => s.push i
+
+partial def unpackParensIdent : Syntax → Option Syntax
+  | `(($stx)) => unpackParensIdent stx
+  | stx => if stx.isIdent then some stx else none
+
+private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array Syntax) MacroM Syntax :=
+  if stx.isAntiquot && !stx.isEscapedAntiquot then
+    if !stx.getAntiquotTerm.isIdent then
+      withFreshMacroScope do
+        push <|<- `(doSeqItem| let u : Level := $(stx.getAntiquotTerm))
+        `(u)
+    else
+      stx
+  else
+    match stx with
+    | Syntax.node k args => do Syntax.node k (← args.mapM floatLevelAntiquot)
+    | stx => stx
+
+private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array Syntax) MacroM Syntax
+  | stx@`(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
+  | stx@`(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
+  | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
+  | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
+  | stx => do
+    if stx.isAntiquot && !stx.isEscapedAntiquot then
+      let term := stx.getAntiquotTerm
+      if term.isIdent then
+        stx
+      else if depth > 0 then
+        Syntax.mkAntiquotNode (← floatExprAntiquot (depth - 1) term)
+      else
+        match unpackParensIdent stx.getAntiquotTerm with
+          | some id =>
+            if id.getId.isAtomic then
+              return (addSyntaxDollar id)
+          | none => ()
+        withFreshMacroScope do
+          push <|<- `(doSeqItem| let a : QQ _ := $term)
+          addSyntaxDollar <|<- `(a)
+    else
+      match stx with
+      | Syntax.node k args => do Syntax.node k (← args.mapM (floatExprAntiquot depth))
+      | stx => stx
+
 macro_rules
   | `(doElem| let $pat:term ← $rhs) => do
     if !hasQMatch pat then Macro.throwUnsupported
@@ -283,12 +329,18 @@ macro_rules
     if !hasQMatch pat then Macro.throwUnsupported
     match pat with
       | `(~q($pat)) =>
-        match rhs with
-          | `(doElem| $id:ident $rhs:term) =>
-            if id.getId.eraseMacroScopes == `pure then -- TODO: super hacky
-              return ← `(doElem| do assert! (_qq_match $pat ← $rhs | $alt))
-          | _ => ()
-        `(doElem| do let rhs ← $rhs; assert! (_qq_match $pat ← rhs | $alt))
+        let (pat, lifts) ← floatExprAntiquot 0 pat #[]
+
+        let mut t ← (do
+          match rhs with
+            | `(doElem| $id:ident $rhs:term) =>
+              if id.getId.eraseMacroScopes == `pure then -- TODO: super hacky
+                return ← `(doSeqItem| assert! (_qq_match $pat ← $rhs | $alt))
+            | _ => ()
+          `(doSeqItem| do let rhs ← $rhs; assert! (_qq_match $pat ← rhs | $alt)))
+
+        `(doElem| do $(lifts.push t):doSeqItem*)
+
       | _ =>
         let (pat', auxs) ← floatQMatch (← `(doElem| alt)) pat []
         let items :=

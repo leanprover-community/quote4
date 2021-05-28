@@ -64,6 +64,11 @@ def stripDollars : Name → Name
   | str n s _ => mkStr (stripDollars n) s
   | num n i _ => mkNum (stripDollars n) i
 
+def addSyntaxDollar : Syntax → Syntax
+  | Syntax.ident info rawVal            val  preresolved =>
+    Syntax.ident info rawVal (addDollar val) preresolved
+  | stx => panic! "addSyntaxDollar {stx}"
+
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   e.getAppFn.constName?.getD `udummy
 
@@ -385,11 +390,6 @@ support `Q($(foo) ∨ False)`
 
 private def push (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Unit :=
   modify fun s => s.push (i, t, l)
-
-private def addSyntaxDollar : Syntax → Syntax
-  | Syntax.ident info rawVal            val  preresolved =>
-    Syntax.ident info rawVal (addDollar val) preresolved
-  | stx => panic! "{stx}"
 
 private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax :=
   if stx.isAntiquot && !stx.isEscapedAntiquot then
