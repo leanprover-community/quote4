@@ -5,6 +5,10 @@ namespace Qq
 
 namespace Impl
 
+-- HACK: https://github.com/leanprover/lean4/issues/494
+scoped syntax "q(" term ")​" : term
+scoped syntax "Q(" term ")​" : term
+
 -- TODO: this probably exists in the library
 private def failureOnError (x : MetaM α) : DelabM α := do
   let y : MetaM (Option α) := do try some (← x) catch _ => none
@@ -27,10 +31,10 @@ def delabQuoted : Delab := do
 def delabQ : Delab := do
   guard $ (← getExpr).getAppNumArgs == 1
   let stx ← withAppArg delabQuoted
-  `(Q($stx))
+  `(Q($stx)​)
 
 @[delab app.Qq.QQ.qq]
 def delabq : Delab := do
   guard $ (← getExpr).getAppNumArgs == 2
   let stx ← withAppArg delabQuoted
-  `(q($stx))
+  `(q($stx)​)
