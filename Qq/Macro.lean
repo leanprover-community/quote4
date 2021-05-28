@@ -57,6 +57,13 @@ def removeDollar : Name → Option Name
   | str n s _ => (removeDollar n).map (mkStr . s)
   | num n i _ => (removeDollar n).map (mkNum . i)
 
+open Name in
+def stripDollars : Name → Name
+  | anonymous => anonymous
+  | str n "$" _ => stripDollars n
+  | str n s _ => mkStr (stripDollars n) s
+  | num n i _ => mkNum (stripDollars n) i
+
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   e.getAppFn.constName?.getD `udummy
 
@@ -394,15 +401,18 @@ private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax �
     | Syntax.node k args => do Syntax.node k (← args.mapM floatLevelAntiquot)
     | stx => stx
 
-private partial def floatExprAntiquot : Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
-  | stx@`(Q($x)) => stx
-  | stx@`(q($x)) => stx
+private partial def floatExprAntiquot (depth : Nat) :
+    Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
+  | stx@`(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
+  | stx@`(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
-  | stx =>
+  | stx => do
     if stx.isAntiquot && !stx.isEscapedAntiquot then
       let term := stx.getAntiquotTerm
-      if term.isIdent && term.getId.isAtomic then
+      if depth > 0 then
+        Syntax.mkAntiquotNode (← floatExprAntiquot (depth - 1) term)
+      else if term.isIdent && (stripDollars term.getId).isAtomic then
         addSyntaxDollar term
       else
         withFreshMacroScope do
@@ -410,19 +420,19 @@ private partial def floatExprAntiquot : Syntax → StateT (Array $ Syntax × Syn
           addSyntaxDollar <|<- `(a)
     else
       match stx with
-      | Syntax.node k args => do Syntax.node k (← args.mapM floatExprAntiquot)
+      | Syntax.node k args => do Syntax.node k (← args.mapM (floatExprAntiquot depth))
       | stx => stx
 
 macro_rules
   | `(Q($t0)) => do
-    let (t, lifts) ← floatExprAntiquot t0 #[]
+    let (t, lifts) ← floatExprAntiquot 0 t0 #[]
     if lifts.isEmpty && t == t0 then Macro.throwUnsupported
     let mut t ← `(Q($t))
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     t
   | `(q($t0)) => do
-    let (t, lifts) ← floatExprAntiquot t0 #[]
+    let (t, lifts) ← floatExprAntiquot 0 t0 #[]
     if lifts.isEmpty && t == t0 then Macro.throwUnsupported
     let mut t ← `(q($t))
     for (a, ty, lift) in lifts do
