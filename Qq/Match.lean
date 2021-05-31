@@ -44,7 +44,7 @@ def mkLambdaQ (n : Name) (fvar : QQ α) (body : QQ β) : QQ (mkForall n BinderIn
 
 def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → Q(MetaM $(mkIsDefEqType decls))
   | [] => q($(mkIsDefEqResult true decls))
-  -- https://github.com/leanprover/lean4/issues/471
+  -- https://github.com/leanprover/lean4/issues/501
   | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
     q(Bind.bind (instantiateLevelMVars $(decl.fvar))
