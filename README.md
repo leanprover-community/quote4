@@ -10,18 +10,18 @@ The type former comes with the following
 natural introduction rule:
 
 ```
-  α,    β,    γ  ⊢   t  : Type
-------------------------------
-Q(α), Q(β), Q(γ) ⊢ Q(t) : Type
+$a :   α,  $b :   β,  $c :   γ  ⊢   t  : Type
+---------------------------------------------
+ a : Q(α),  b : Q(β),  c : Q(γ) ⊢ Q(t) : Type
 ```
 
 The lower-case `q(·)` macro serves
 as the modal inference rule,
 allowing us to construct values in `Q(·)`:
 ```
-  α,    β,    γ  ⊢   t  :   δ
-------------------------------
-Q(α), Q(β), Q(γ) ⊢ q(t) : Q(δ)
+$a :   α,  $b :   β,  $c :   γ  ⊢   t  :   δ
+---------------------------------------------
+ a : Q(α),  b : Q(β),  c : Q(γ) ⊢ q(t) : Q(δ)
 ```
 
 ## Example
