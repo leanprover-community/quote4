@@ -57,7 +57,7 @@ open Level in
 private def reflectLevel : Level → Expr
   | zero _       => mkConst ``levelZero
   | succ l _     => mkApp (mkConst ``mkLevelSucc) (reflectLevel l)
-  | max l₁ l₂ _  => mkApp2 (mkConst ``mkLevelMax) (reflectLevel l₁) (reflectLevel l₂)
+  | Level.max l₁ l₂ _ => mkApp2 (mkConst ``mkLevelMax) (reflectLevel l₁) (reflectLevel l₂)
   | imax l₁ l₂ _ => mkApp2 (mkConst ``mkLevelIMax) (reflectLevel l₁) (reflectLevel l₂)
   | param n _    => mkApp (mkConst ``mkLevelParam) (reflect n)
   | mvar n _     => mkApp (mkConst ``mkLevelMVar) (reflect n)
