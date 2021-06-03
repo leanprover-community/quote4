@@ -5,7 +5,11 @@ namespace Qq
 
 structure QQ (α : Expr) where qq ::
   quoted : Expr
-  deriving BEq, Hashable, Inhabited
+  deriving BEq, Inhabited
+
+-- https://github.com/leanprover/lean4/issues/507
+instance : Hashable (QQ α) where
+  hash q := hash q.quoted
 
 unif_hint (q : QQ t) (e : Expr) where
   q =?= QQ.qq e ⊢ q.quoted =?= e
