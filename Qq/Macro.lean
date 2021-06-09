@@ -47,6 +47,7 @@ abbrev UnquoteM := StateT UnquoteState MetaM
 open Name in
 def addDollar : Name → Name
   | anonymous => mkStr anonymous "$"
+  | str anonymous s _ => mkStr anonymous ("$" ++ s)
   | str n s _ => mkStr (addDollar n) s
   | num n i _ => mkNum (addDollar n) i
 
@@ -54,6 +55,8 @@ open Name in
 def removeDollar : Name → Option Name
   | anonymous => none
   | str anonymous "$" _ => some anonymous
+  | str anonymous s _ =>
+    if s.startsWith "$" then mkStr anonymous (s.drop 1) else none
   | str n s _ => (removeDollar n).map (mkStr . s)
   | num n i _ => (removeDollar n).map (mkNum . i)
 
@@ -61,6 +64,9 @@ open Name in
 def stripDollars : Name → Name
   | anonymous => anonymous
   | str n "$" _ => stripDollars n
+  | str anonymous s _ =>
+    let s := s.dropWhile (· = '$')
+    if s = "" then anonymous else mkStr anonymous s
   | str n s _ => mkStr (stripDollars n) s
   | num n i _ => mkNum (stripDollars n) i
 
