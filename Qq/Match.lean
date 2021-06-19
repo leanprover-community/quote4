@@ -65,8 +65,8 @@ def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
     let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
     q(Bind.bind (mkFreshExprMVar $ty) $(mkLambdaQ `x decl.fvar (mkIsDefEqCore decls pat discr rest)))
   | [] => q(do
-      let matches ← withReducible $ isDefEq $pat $discr
-      by exact if matches then
+      let matches? ← withReducible $ isDefEq $pat $discr
+      by exact if matches? then
         $(mkInstantiateMVars decls decls)
       else
         $(mkIsDefEqResult false decls))
