@@ -2,6 +2,13 @@ import Qq.Macro
 import Qq.MetaM
 import Qq.ForLean.Do
 
+open Lean in
+partial def Lean.Syntax.stripPos : Syntax → Syntax
+  | atom info a => atom SourceInfo.none a
+  | ident info r v p => ident SourceInfo.none r v p
+  | node kind args => node kind (args.map stripPos)
+  | missing => missing
+
 open Lean Elab Term Meta
 open Parser.Term
 
@@ -145,7 +152,7 @@ partial def getPatVars (pat : Syntax) : StateT (Array (Name × Nat × Expr)) Ter
     mkMVar (fn : Syntax) (args : Array Syntax) : StateT _ TermElabM Syntax := do
       let args ← args.mapM getPatVars
       withFreshMacroScope do
-        let mvar ← elabTerm (← `(?m)) (← mkNAryFunctionType args.size)
+        let mvar ← elabTerm (← `(?m)).stripPos (← mkNAryFunctionType args.size)
         modify fun s => s.push (fn.getAntiquotTerm.getId, args.size, mvar)
         `(?m $args*)
 
@@ -234,7 +241,7 @@ partial def isIrrefutablePattern : Syntax → Bool
 
 scoped elab "_comefrom" n:ident "do" b:doElem ";" body:term : term <= expectedType => do
   let _ ← extractBind expectedType
-  assignExprMVar (← elabTerm (← `(?m)) none).mvarId! expectedType
+  assignExprMVar (← elabTerm (← `(?m)).stripPos none).mvarId! expectedType
   elabTerm (← `(have $n:ident : ?m := (do $b:doElem); $body)) expectedType
 
 scoped syntax "_comefrom" ident "do" doElem : term
