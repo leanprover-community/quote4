@@ -1,5 +1,5 @@
 import Qq.Macro
-open Qq Lean Elab PrettyPrinter.Delaborator Meta Impl Std
+open Qq Lean Elab PrettyPrinter.Delaborator SubExpr Meta Impl Std
 
 namespace Qq
 
@@ -21,7 +21,7 @@ def delabQuoted : Delab := do
   let e ← getExpr
   let ((newE, newLCtx), _) ← failureOnError $ (unquote e).run {}
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
-    withReader (fun cfg => { cfg with expr := newE }) delab
+    withTheReader SubExpr (fun s => { s with expr := newE }) delab
 
 @[delab app.Qq.QQ]
 def delabQ : Delab := do
