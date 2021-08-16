@@ -8,11 +8,11 @@ open Lean Meta
 
 namespace Lean.Elab.Term
 
-private def mkIdBindFor (type : Expr) : TermElabM ExtractMonadResult := do
+def mkIdBindFor (type : Expr) : TermElabM ExtractMonadResult := do
   let u ← getDecLevel type
-  let id        := Lean.mkConst `Id [u]
-  let idBindVal := Lean.mkConst `Id.hasBind [u]
-  pure { m := id, hasBindInst := idBindVal, α := type, expectedType := mkApp id type }
+  let id        := Lean.mkConst ``Id [u]
+  let idBindVal := Lean.mkConst ``Id.hasBind [u]
+  pure { m := id, hasBindInst := idBindVal, α := type, expectedType := mkApp id type, isPure := true }
 
 partial def extractBind (expectedType? : Option Expr) : TermElabM ExtractMonadResult := do
   match expectedType? with
@@ -22,9 +22,9 @@ partial def extractBind (expectedType? : Option Expr) : TermElabM ExtractMonadRe
       match type with
       | Expr.app m α _ =>
         try
-          let bindInstType ← mkAppM `Bind #[m]
+          let bindInstType ← mkAppM ``Bind #[m]
           let bindInstVal  ← Meta.synthInstance bindInstType
-          return some { m := m, hasBindInst := bindInstVal, α := α, expectedType := expectedType }
+          return some { m := m, hasBindInst := bindInstVal, α := α, expectedType := expectedType, isPure := false }
         catch _ =>
           return none
       | _ =>
