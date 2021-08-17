@@ -1,6 +1,6 @@
 import Lean
 import Qq.ForLean.ReduceEval
-import Qq.Reflect
+import Qq.ForLean.ToExpr
 import Qq.Typ
 open Lean Meta Std
 
@@ -124,7 +124,7 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
     throwFailedToEval e
 
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
-  if e.isAppOf ``reflect then return e.getArg! 2
+  if e.isAppOf ``toExpr then return e.getArg! 2
   let e ← whnf e
   match e with
     | Expr.proj ``QQ 0 a _ =>
@@ -210,10 +210,10 @@ def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
       }
     else
       let Level.succ u _ ← getLevel ty | ()
-      let LOption.some inst ← trySynthInstance (mkApp (mkConst ``Reflect [u]) ty) | ()
+      let LOption.some inst ← trySynthInstance (mkApp (mkConst ``ToExpr [u]) ty) | ()
       modify fun s => { s with
         unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
-        exprBackSubst := s.exprBackSubst.insert fv (mkApp3 (mkConst ``reflect [u]) ty inst fv)
+        exprBackSubst := s.exprBackSubst.insert fv (mkApp3 (mkConst ``toExpr [u]) ty inst fv)
         exprSubst := s.exprSubst.insert fv fv
       }
 
@@ -258,13 +258,13 @@ def quoteLevelList : List Level → QuoteM Expr
       (← quoteLevel l) (← quoteLevelList ls)
 
 partial def quoteExpr : Expr → QuoteM Expr
-  | Expr.bvar i _ => mkApp (mkConst ``mkBVar) (reflect i)
+  | Expr.bvar i _ => mkApp (mkConst ``mkBVar) (toExpr i)
   | e@(Expr.fvar i _) => do
     let some r ← (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
     r
   | e@(Expr.mvar i _) => throwError "resulting term contains metavariable {e}"
   | Expr.sort u _ => do mkApp (mkConst ``mkSort) (← quoteLevel u)
-  | Expr.const n ls _ => do mkApp2 (mkConst ``mkConst) (reflect n) (← quoteLevelList ls)
+  | Expr.const n ls _ => do mkApp2 (mkConst ``mkConst) (toExpr n) (← quoteLevelList ls)
   | e@(Expr.app _ _ _) => do
     let fn ← quoteExpr e.getAppFn
     let args ← e.getAppArgs.mapM quoteExpr
@@ -275,15 +275,15 @@ partial def quoteExpr : Expr → QuoteM Expr
     else
       pure $ args.foldl (mkApp2 (mkConst ``mkApp)) fn
   | Expr.lam n t b d => do
-    mkApp4 (mkConst ``mkLambda) (reflect n.eraseMacroScopes)
-      (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
+    mkApp4 (mkConst ``mkLambda) (toExpr n.eraseMacroScopes)
+      (toExpr d.binderInfo) (← quoteExpr t) (← quoteExpr b)
   | Expr.forallE n t b d => do
-    mkApp4 (mkConst ``mkForall) (reflect $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
-      (reflect d.binderInfo) (← quoteExpr t) (← quoteExpr b)
+    mkApp4 (mkConst ``mkForall) (toExpr $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
+      (toExpr d.binderInfo) (← quoteExpr t) (← quoteExpr b)
   | Expr.letE n t v b d => do
-    mkApp5 (mkConst ``mkLet) (reflect n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (reflect d.nonDepLet)
-  | Expr.lit l _ => mkApp (mkConst ``mkLit) (reflect l)
-  | Expr.proj n i e _ => do mkApp3 (mkConst ``mkProj) (reflect n) (reflect i) (← quoteExpr e)
+    mkApp5 (mkConst ``mkLet) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d.nonDepLet)
+  | Expr.lit l _ => mkApp (mkConst ``mkLit) (toExpr l)
+  | Expr.proj n i e _ => do mkApp3 (mkConst ``mkProj) (toExpr n) (toExpr i) (← quoteExpr e)
   | e => throwError "quoteExpr todo {e}"
 
 def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashMap MVarId (QuoteM Expr)) := do
