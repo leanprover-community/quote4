@@ -3,23 +3,20 @@ open Lean
 
 namespace Qq
 
-structure QQ (α : Expr) where qq ::
-  quoted : Expr
-  deriving BEq, Hashable, Inhabited
+def QQ (α : Expr) := Expr
 
-attribute [class] QQ
+protected def QQ.qq (e : Expr) : QQ α := e
 
-protected constant QQ.qq' {α : Expr} (t : Expr) : QQ α := ⟨t⟩
+instance : BEq (QQ α) := inferInstanceAs (BEq Expr)
+instance : Hashable (QQ α) := inferInstanceAs (Hashable Expr)
+instance : Inhabited (QQ α) := inferInstanceAs (Inhabited Expr)
+instance : ToString (QQ α) := inferInstanceAs (ToString Expr)
+
+instance : Coe (QQ α) Expr where coe e := e
+
+protected constant QQ.qq' {α : Expr} (t : Expr) : QQ α := t
 
 protected abbrev QQ.ty (t : QQ α) : Expr := α
-
-protected structure isDefEq (t s : QQ α)
-
-instance : ToString (QQ α) where
-  toString q := toString q.quoted
-
-instance : Coe (QQ α) Expr where
-  coe := QQ.quoted
 
 open Meta in
 protected def QQ.check (e : QQ α) : MetaM Unit := do

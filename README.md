@@ -82,17 +82,16 @@ the subterm `t` of `fun n : Nat => t`.
 The type family on which this package is built is called `QQ`:
 
 ```lean
-structure QQ (α : Expr) where
-  quoted : Expr
+def QQ (α : Expr) := Expr
 ```
 
-The intended meaning of `⟨e⟩ : QQ t` is that
+The intended meaning of `e : QQ t` is that
 `e` is an expression of type `t`.
 Or if you will,
 `isDefEq (← inferType e) t`.
 (This invariant is not enforced though,
 but it can be checked with `QQ.check`.)
-The `QQ` type is almost impossible to use manually.
+The `QQ` type is not meant to be used manually.
 You should only interact with it
 using the `Q(·)` and `q(·)` macros.
 

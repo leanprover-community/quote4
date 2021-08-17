@@ -36,10 +36,6 @@ structure UnquoteState where
   -- maps free variables in the new context to levels in the old context (of type Level)
   levelBackSubst : HashMap Level Expr := {}
 
-  -- maps quoted whnfd expressions (of type QQ _)
-  -- to quoted expressions (of type Expr; obtained from isDefEq hypotheses)
-  exprRepl : HashMap Expr Expr := {}
-
   levelNames : List Name := []
 
 abbrev UnquoteM := StateT UnquoteState MetaM
@@ -78,11 +74,23 @@ def addSyntaxDollar : Syntax → Syntax
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   e.getAppFn.constName?.getD `udummy
 
+def isBad (e : Expr) : Bool := do
+  if let Expr.const (Name.str _ "rec" _) _ _ := e.getAppFn then
+    return true
+  return false
+
+-- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/How.20to.20WHNF.20without.20exposing.20recursors.3F/near/249743042
+partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
+  let e ← whnfCore e
+  let e0 := if isBad e then e0 else e
+  match ← unfoldDefinition? e with
+    | some e => whnf e (if isBad e then e0 else e)
+    | none => e0
+
 partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   let e ← whnf e
-  match (← get).levelSubst.find? e with
-    | some l => return l
-    | _ => ()
+  if let some l := (← get).levelSubst.find? e then
+    return l
   if e.isAppOfArity ``Level.zero 1 then levelZero
   else if e.isAppOfArity ``Level.succ 2 then mkLevelSucc (← unquoteLevel (e.getArg! 0))
   else if e.isAppOfArity ``Level.max 3 then mkLevelMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
@@ -142,31 +150,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     }
     return fv
   let e ← whnf e
-  match e with
-    | Expr.proj ``QQ 0 a _ =>
-      let a ← whnf a
-      match (← get).exprRepl.find? a with
-      | some e' =>
-          return ← unquoteExpr e'
-      | _ => ()
-        match (← get).exprSubst.find? a with
-        | some e => return e
-        | _ =>
-          let ta ← inferType a
-          let ta ← whnf ta
-          if !ta.isAppOfArity ``QQ 1 then throwError "unquoteExpr: {ta}"
-          let ty ← unquoteExpr (ta.getArg! 0)
-          let fvarId := FVarId.mk (← mkFreshId)
-          let name ← mkAbstractedName a
-          let fv := mkFVar fvarId
-          modify fun s => { s with
-            unquoted := s.unquoted.mkLocalDecl fvarId name ty
-            exprSubst := s.exprSubst.insert a fv
-            exprBackSubst := s.exprBackSubst.insert fv e
-          }
-          return fv
-    | _ => ()
-  let Expr.const c _ _ ← pure e.getAppFn | throwError "unquoteExpr: {e}"
+  let Expr.const c _ _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
   let nargs := e.getAppNumArgs
   match c, nargs with
     | ``betaRev', 2 => betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
@@ -190,39 +174,28 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     | ``Expr.lit, 2 => mkLit (← reduceEval (e.getArg! 0))
     | ``Expr.proj, 4 =>
       mkProj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
-    | _, _ => throwError "unquoteExpr: {e}"
+    | _, _ => throwError "unquoteExpr: {e} : {eTy}"
 
 end
 
-def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
+def unquoteLCtx : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
-    let whnfTy ← whnf ty
-    if whnfTy.isAppOf ``QQ then
+    let whnfTy ← withReducible <| whnf ty
+    if whnfTy.isAppOfArity ``QQ 1 then
       let qTy := whnfTy.appArg!
       let newTy ← unquoteExpr qTy
       modify fun s => { s with
         unquoted := s.unquoted.addDecl $
           LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo
-        exprBackSubst := s.exprBackSubst.insert fv (mkApp2 (mkConst ``QQ.quoted) qTy fv)
+        exprBackSubst := s.exprBackSubst.insert fv fv
         exprSubst := s.exprSubst.insert fv fv
       }
-    else if whnfTy.isAppOf ``Level then
+    else if whnfTy.isAppOfArity ``Level 0 then
       modify fun s => { s with
         levelNames := ldecl.userName :: s.levelNames
         levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
-      }
-    else if whnfTy.isAppOfArity ``Qq.isDefEq 3 then
-      unless gadgets do continue
-      let lhs ← whnf <|
-        match ← whnf <| mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 1) with
-          | Expr.proj ``QQ 0 a _ => a
-          | _ => whnfTy.getArg! 1
-      let rhs := mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 2)
-      if lhs.isFVar && rhs.containsFVar lhs.fvarId! then continue -- TODO larger cycles
-      modify fun s => { s with
-        exprRepl := s.exprRepl.insert lhs rhs
       }
     else
       let Level.succ u _ ← getLevel ty | ()
@@ -314,7 +287,7 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
     if !(lctx.isSubPrefixOf mdecl.lctx && mdecl.lctx.isSubPrefixOf lctx) then
       throwError "incompatible metavariable {mvar.name}\n{MessageData.ofGoal mvar}"
 
-    let ty ← whnf mdecl.type
+    let ty ← withReducible <| whnf mdecl.type
     let ty ← instantiateMVars ty
     if ty.isAppOf ``QQ then
       let et := ty.getArg! 0
@@ -350,13 +323,23 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
 def lctxHasMVar : MetaM Bool := do
   (← getLCtx).anyM fun decl => do (← instantiateLocalDeclMVars decl).hasExprMVar
 
+partial def getMVars' (e : Expr) : MetaM (Array MVarId) := go e {}
+  where
+    go (e : Expr) (mvars : Array MVarId) : MetaM (Array MVarId) := do
+      let mut mvars := mvars
+      for mvarId in ← getMVars e do
+        mvars ← go (← inferType (mkMVar mvarId)) mvars
+        unless mvars.contains mvarId do
+          mvars := mvars.push mvarId
+      mvars
+
 end Impl
 
 open Lean.Elab Lean.Elab.Tactic Lean.Elab.Term Impl
 
 def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let lastId := (← mkFreshExprMVar expectedType).mvarId!
-  let mvars := (← getMVars expectedType).push lastId
+  let mvars := (← getMVars' expectedType).push lastId
   let ((exprMVarSubst, mvarSynth), s) ← (unquoteMVars mvars).run {}
 
   let lastId := (exprMVarSubst.find! mvars.back).mvarId!
@@ -391,12 +374,12 @@ scoped elab "q(" t:incQuotDepth(term) ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
   ensureHasType expectedType $ ← commitIfDidNotPostpone do
-    let mut expectedType ← whnf expectedType
+    let mut expectedType ← withReducible <| Impl.whnf expectedType
     if !expectedType.isAppOfArity ``QQ 1 then
       let u ← mkFreshExprMVar (mkConst ``Level)
       let u' := mkApp (mkConst ``mkSort) u
       let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
-      expectedType := mkApp (mkConst ``QQ) (mkApp2 (mkConst ``QQ.quoted) u' t)
+      expectedType := mkApp (mkConst ``QQ) t
     Impl.macro t expectedType
 
 scoped elab "Q(" t:incQuotDepth(term) ")" : term <= expectedType => do
@@ -406,14 +389,17 @@ scoped elab "Q(" t:incQuotDepth(term) ")" : term <= expectedType => do
   commitIfDidNotPostpone do Impl.macro t expectedType
 
 
+namespace Impl
+
 /-
 support `Q($(foo) ∨ False)`
 -/
 
-private def push (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Unit :=
+private def push [Monad m] (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) m Unit :=
   modify fun s => s.push (i, t, l)
 
-private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax :=
+partial def floatLevelAntiquot [Monad m] [MonadQuotation m] (stx : Syntax) :
+    StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
   if stx.isAntiquot && !stx.isEscapedAntiquot then
     withFreshMacroScope do
       push (← `(u)) (← `(Level)) (← floatLevelAntiquot stx.getAntiquotTerm)
@@ -423,8 +409,8 @@ private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax �
     | Syntax.node k args => do Syntax.node k (← args.mapM floatLevelAntiquot)
     | stx => stx
 
-private partial def floatExprAntiquot (depth : Nat) :
-    Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
+partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
+    Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
   | stx@`(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
   | stx@`(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
@@ -460,3 +446,5 @@ macro_rules
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     t
+
+end Impl
