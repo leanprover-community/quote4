@@ -26,15 +26,21 @@ def PatVarDecl.fvarTy : PatVarDecl → Q(Type)
   | { ty := some _, .. } => q(Expr)
 
 def PatVarDecl.fvar (decl : PatVarDecl) : Q($((decl.fvarTy))) :=
-  ⟨mkFVar decl.fvarId⟩
+  mkFVar decl.fvarId
 
 def mkIsDefEqType : List PatVarDecl → Q(Type)
   | [] => q(Bool)
   | decl :: decls => q($(decl.fvarTy) × $(mkIsDefEqType decls))
 
+elab "showTerm" t:term : term <= expectedType => do
+  let t ← elabTerm t expectedType
+  throwError "{t}"
+  t
+
 def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls))
-  | [] => q($val)
-  | decl :: decls => q(($(decl.fvar), $(mkIsDefEqResult val decls)))
+  | [] => show Q(Bool) from q($val)
+  | decl :: decls => show Q($(decl.fvarTy) × $(mkIsDefEqType decls)) from
+    q(($(decl.fvar), $(mkIsDefEqResult val decls)))
 
 def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) → Q(Bool)
   | [], val => q($val)

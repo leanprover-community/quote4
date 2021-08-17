@@ -125,32 +125,47 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
 
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if e.isAppOf ``toExpr then return e.getArg! 2
+  let eTy ← inferType e
+  if eTy.isAppOfArity ``QQ 1 then
+    if let some e' ← (← get).exprSubst.find? e then
+      return e'
+    let ty ← unquoteExpr (eTy.getArg! 0)
+    let fvarId ← mkFreshId
+    let name ← mkAbstractedName e
+    let fv := mkFVar fvarId
+    modify fun s => { s with
+      unquoted := s.unquoted.mkLocalDecl fvarId name ty
+      exprSubst := s.exprSubst.insert e fv
+      exprBackSubst := s.exprBackSubst.insert fv e
+    }
+    return fv
+    -- throwError "unquoteExpr: TODO: add abstracted fvar for {e} : {eTy}"
+  -- match e with
+  --   | Expr.proj ``QQ 0 a _ =>
+  --     let a ← whnf a
+  --     match (← get).exprRepl.find? a with
+  --     | some e' =>
+  --         return ← unquoteExpr e'
+  --     | _ => ()
+  --       match (← get).exprSubst.find? a with
+  --       | some e => return e
+  --       | _ =>
+  --         let ta ← inferType a
+  --         let ta ← whnf ta
+  --         if !ta.isAppOfArity ``QQ 1 then throwError "unquoteExpr: {ta}"
+  --         let ty ← unquoteExpr (ta.getArg! 0)
+  --         let fvarId ← mkFreshId
+  --         let name ← mkAbstractedName a
+  --         let fv := mkFVar fvarId
+  --         modify fun s => { s with
+  --           unquoted := s.unquoted.mkLocalDecl fvarId name ty
+  --           exprSubst := s.exprSubst.insert a fv
+  --           exprBackSubst := s.exprBackSubst.insert fv e
+  --         }
+  --         return fv
+  --   | _ => ()
   let e ← whnf e
-  match e with
-    | Expr.proj ``QQ 0 a _ =>
-      let a ← whnf a
-      match (← get).exprRepl.find? a with
-      | some e' =>
-          return ← unquoteExpr e'
-      | _ => ()
-        match (← get).exprSubst.find? a with
-        | some e => return e
-        | _ =>
-          let ta ← inferType a
-          let ta ← whnf ta
-          if !ta.isAppOfArity ``QQ 1 then throwError "unquoteExpr: {ta}"
-          let ty ← unquoteExpr (ta.getArg! 0)
-          let fvarId ← mkFreshId
-          let name ← mkAbstractedName a
-          let fv := mkFVar fvarId
-          modify fun s => { s with
-            unquoted := s.unquoted.mkLocalDecl fvarId name ty
-            exprSubst := s.exprSubst.insert a fv
-            exprBackSubst := s.exprBackSubst.insert fv e
-          }
-          return fv
-    | _ => ()
-  let Expr.const c _ _ ← pure e.getAppFn | throwError "unquoteExpr: {e}"
+  let Expr.const c _ _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
   let nargs := e.getAppNumArgs
   match c, nargs with
     | ``betaRev', 2 => betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
@@ -174,7 +189,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     | ``Expr.lit, 2 => mkLit (← reduceEval (e.getArg! 0))
     | ``Expr.proj, 4 =>
       mkProj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
-    | _, _ => throwError "unquoteExpr: {e}"
+    | _, _ => throwError "unquoteExpr: {e} : {eTy}"
 
 end
 
@@ -182,32 +197,32 @@ def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
-    let whnfTy ← whnf ty
-    if whnfTy.isAppOf ``QQ then
+    let whnfTy ← withReducible <| whnf ty
+    if whnfTy.isAppOfArity ``QQ 1 then
       let qTy := whnfTy.appArg!
       let newTy ← unquoteExpr qTy
       modify fun s => { s with
         unquoted := s.unquoted.addDecl $
           LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo
-        exprBackSubst := s.exprBackSubst.insert fv (mkApp2 (mkConst ``QQ.quoted) qTy fv)
+        exprBackSubst := s.exprBackSubst.insert fv fv
         exprSubst := s.exprSubst.insert fv fv
       }
-    else if whnfTy.isAppOf ``Level then
+    else if whnfTy.isAppOfArity ``Level 1 then
       modify fun s => { s with
         levelNames := ldecl.userName :: s.levelNames
         levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
       }
-    else if whnfTy.isAppOfArity ``Qq.isDefEq 3 then
-      unless gadgets do continue
-      let lhs ← whnf <|
-        match ← whnf <| mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 1) with
-          | Expr.proj ``QQ 0 a _ => a
-          | _ => whnfTy.getArg! 1
-      let rhs := mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 2)
-      if lhs.isFVar && rhs.containsFVar lhs.fvarId! then continue -- TODO larger cycles
-      modify fun s => { s with
-        exprRepl := s.exprRepl.insert lhs rhs
-      }
+    -- else if whnfTy.isAppOfArity ``Qq.isDefEq 3 then
+    --   unless gadgets do continue
+    --   let lhs ← whnf <|
+    --     match ← whnf <| mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 1) with
+    --       | Expr.proj ``QQ 0 a _ => a
+    --       | _ => whnfTy.getArg! 1
+    --   let rhs := mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 2)
+    --   if lhs.isFVar && rhs.containsFVar lhs.fvarId! then continue -- TODO larger cycles
+    --   modify fun s => { s with
+    --     exprRepl := s.exprRepl.insert lhs rhs
+    --   }
     else
       let Level.succ u _ ← getLevel ty | ()
       let LOption.some inst ← trySynthInstance (mkApp (mkConst ``ToExpr [u]) ty) | ()
@@ -298,7 +313,7 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
     if !(lctx.isSubPrefixOf mdecl.lctx && mdecl.lctx.isSubPrefixOf lctx) then
       throwError "incompatible metavariable {mvar}\n{MessageData.ofGoal mvar}"
 
-    let ty ← whnf mdecl.type
+    let ty ← withReducible <| whnf mdecl.type
     let ty ← instantiateMVars ty
     if ty.isAppOf ``QQ then
       let et := ty.getArg! 0
@@ -375,12 +390,12 @@ scoped elab "q(" t:incQuotDepth(term) ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
   ensureHasType expectedType $ ← commitIfDidNotPostpone do
-    let mut expectedType ← whnf expectedType
+    let mut expectedType ← withReducible <| whnf expectedType
     if !expectedType.isAppOfArity ``QQ 1 then
       let u ← mkFreshExprMVar (mkConst ``Level)
       let u' := mkApp (mkConst ``mkSort) u
       let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
-      expectedType := mkApp (mkConst ``QQ) (mkApp2 (mkConst ``QQ.quoted) u' t)
+      expectedType := mkApp (mkConst ``QQ) t
     Impl.macro t expectedType
 
 scoped elab "Q(" t:incQuotDepth(term) ")" : term <= expectedType => do
