@@ -79,6 +79,7 @@ def isBad (e : Expr) : Bool := do
     return true
   return false
 
+-- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/How.20to.20WHNF.20without.20exposing.20recursors.3F/near/249743042
 partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
   let e ← whnfCore e
   let e0 := if isBad e then e0 else e
@@ -147,31 +148,6 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
       exprBackSubst := s.exprBackSubst.insert fv e
     }
     return fv
-    -- throwError "unquoteExpr: TODO: add abstracted fvar for {e} : {eTy}"
-  -- match e with
-  --   | Expr.proj ``QQ 0 a _ =>
-  --     let a ← whnf a
-  --     match (← get).exprRepl.find? a with
-  --     | some e' =>
-  --         return ← unquoteExpr e'
-  --     | _ => ()
-  --       match (← get).exprSubst.find? a with
-  --       | some e => return e
-  --       | _ =>
-  --         let ta ← inferType a
-  --         let ta ← whnf ta
-  --         if !ta.isAppOfArity ``QQ 1 then throwError "unquoteExpr: {ta}"
-  --         let ty ← unquoteExpr (ta.getArg! 0)
-  --         let fvarId ← mkFreshId
-  --         let name ← mkAbstractedName a
-  --         let fv := mkFVar fvarId
-  --         modify fun s => { s with
-  --           unquoted := s.unquoted.mkLocalDecl fvarId name ty
-  --           exprSubst := s.exprSubst.insert a fv
-  --           exprBackSubst := s.exprBackSubst.insert fv e
-  --         }
-  --         return fv
-  --   | _ => ()
   let e ← whnf e
   let Expr.const c _ _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
   let nargs := e.getAppNumArgs
@@ -201,7 +177,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
 
 end
 
-def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
+def unquoteLCtx : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
@@ -312,7 +288,6 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
 
     let ty ← withReducible <| whnf mdecl.type
     let ty ← instantiateMVars ty
-    -- dbg_trace "{mvar} {ty}"
     if ty.isAppOf ``QQ then
       let et := ty.getArg! 0
       let newET ← unquoteExpr et
@@ -467,7 +442,3 @@ macro_rules
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     t
-
--- example : Expr := q(Nat)
--- #check q(Nat)
--- #check show Expr from q(Nat)

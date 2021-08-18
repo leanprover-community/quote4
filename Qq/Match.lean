@@ -32,11 +32,6 @@ def mkIsDefEqType : List PatVarDecl → Q(Type)
   | [] => q(Bool)
   | decl :: decls => q($(decl.fvarTy) × $(mkIsDefEqType decls))
 
-elab "showTerm" t:term : term <= expectedType => do
-  let t ← elabTerm t expectedType
-  throwError "{t}"
-  t
-
 def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls))
   | [] => show Q(Bool) from q($val)
   | decl :: decls => q(($(decl.fvar), $(mkIsDefEqResult val decls)))
@@ -119,8 +114,6 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLif
       q(if $(mkIsDefEqResultVal decls fv) then
           $(← mkQqLets nextDecls fv do
             let pat : Q(Expr) := QQ.qq' $ replaceTempExprsByQVars decls pat
-            -- let h : Q(@Qq.isDefEq $ty (QQ.qq $discr) (QQ.qq $pat)) := q(⟨⟩)
-            -- withLetHave (← mkFreshId) `h h fun h => do
             k)
         else
           $alt)
