@@ -1,6 +1,7 @@
 import Qq.Macro
 import Qq.MetaM
 import Qq.ForLean.Do
+import Qq.Rw
 
 open Lean in
 partial def Lean.Syntax.stripPos : Syntax → Syntax
@@ -105,7 +106,8 @@ def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
 
 def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLiftT MetaM $m)) (instBind : Q(Bind $m))
     (decls : List PatVarDecl) (ty : Q(Expr))
-    (pat discr : Q(Expr)) (alt : Q($m $γ)) (k : TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
+    (pat discr : Q(Expr)) (alt : Q($m $γ)) (expectedType : Expr)
+    (k : Expr → TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
   let nextDecls : List PatVarDecl :=
     decls.map fun decl => { decl with ty := decl.ty.map fun e => replaceTempExprsByQVars decls e }
   let next ← withLocalDeclD (← mkFreshBinderName) (mkIsDefEqType decls) fun fv => do
@@ -114,7 +116,15 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLif
       q(if $(mkIsDefEqResultVal decls fv) then
           $(← mkQqLets nextDecls fv do
             let pat : Q(Expr) := QQ.qq' $ replaceTempExprsByQVars decls pat
-            k)
+            let (_, s) ← unquoteLCtx.run {}
+            let discr' ← (unquoteExpr discr).run' s
+            let pat' ← (unquoteExpr pat).run' s
+            let lctx ← qrwLCtx s discr' pat'
+            let expectedType ← qrwE s discr' pat' (← instantiateMVars expectedType)
+            withLCtx lctx (← determineLocalInstances lctx) do
+              let res ← k expectedType
+              let res : Q($m $γ) ← instantiateMVars res
+              res)
         else
           $alt)
     show Q($(mkIsDefEqType decls) → $m $γ) from
@@ -221,7 +231,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q($m $γ) := alt
-  makeMatchCode q(‹_›) inst oldPatVarDecls argTyExpr synthed q($e') alt do
+  makeMatchCode q(‹_›) inst oldPatVarDecls argTyExpr synthed q($e') alt expectedType fun expectedType => do
     QQ.qq (← elabTerm body expectedType)
 
 scoped syntax "_qq_match" term " ← " term " | " doElem : term

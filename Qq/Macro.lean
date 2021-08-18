@@ -132,7 +132,8 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
     throwFailedToEval e
 
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
-  if e.isAppOf ``toExpr then return e.getArg! 2
+  if e.isAppOfArity ``QQ.qq 2 then return ← unquoteExpr (e.getArg! 1)
+  if e.isAppOfArity ``toExpr 3 then return e.getArg! 2
   let e ← whnf (← instantiateMVars e)
   let eTy ← withReducible <| whnf (← inferType e)
   if eTy.isAppOfArity ``QQ 1 then
@@ -388,14 +389,17 @@ scoped elab "Q(" t:incQuotDepth(term) ")" : term <= expectedType => do
   commitIfDidNotPostpone do Impl.macro t expectedType
 
 
+namespace Impl
+
 /-
 support `Q($(foo) ∨ False)`
 -/
 
-private def push (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Unit :=
+private def push [Monad m] (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) m Unit :=
   modify fun s => s.push (i, t, l)
 
-private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax :=
+partial def floatLevelAntiquot [Monad m] [MonadQuotation m] (stx : Syntax) :
+    StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
   if stx.isAntiquot && !stx.isEscapedAntiquot then
     withFreshMacroScope do
       push (← `(u)) (← `(Level)) (← floatLevelAntiquot stx.getAntiquotTerm)
@@ -405,8 +409,8 @@ private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array $ Syntax �
     | Syntax.node k args => do Syntax.node k (← args.mapM floatLevelAntiquot)
     | stx => stx
 
-private partial def floatExprAntiquot (depth : Nat) :
-    Syntax → StateT (Array $ Syntax × Syntax × Syntax) MacroM Syntax
+partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
+    Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
   | stx@`(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
   | stx@`(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
@@ -442,3 +446,5 @@ macro_rules
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     t
+
+end Impl
