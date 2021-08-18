@@ -39,8 +39,7 @@ elab "showTerm" t:term : term <= expectedType => do
 
 def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls))
   | [] => show Q(Bool) from q($val)
-  | decl :: decls => show Q($(decl.fvarTy) × $(mkIsDefEqType decls)) from
-    q(($(decl.fvar), $(mkIsDefEqResult val decls)))
+  | decl :: decls => q(($(decl.fvar), $(mkIsDefEqResult val decls)))
 
 def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) → Q(Bool)
   | [], val => q($val)
@@ -53,7 +52,7 @@ def mkLet' (n : Name) (fvar : Expr) (ty : Expr) (val : Expr) (body : Expr) : Exp
   mkLet n ty val (body.abstract #[fvar])
 
 def mkLambdaQ (n : Name) (fvar : QQ α) (body : QQ β) : QQ (mkForall n BinderInfo.default α β) :=
-  ⟨mkLambda n BinderInfo.default α (body.quoted.abstract #[fvar])⟩
+  mkLambda n BinderInfo.default α (body.abstract #[fvar])
 
 def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → Q(MetaM $(mkIsDefEqType decls))
   | [] => q($(mkIsDefEqResult true decls))
@@ -90,7 +89,7 @@ def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : Q(MetaM $(mkIsDe
 def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLCtx m]
     (fvarId : FVarId) (userName : Name) (val : (QQ α)) (k : (QQ α) → m (QQ β)) : m (QQ β) := do
   withExistingLocalDecls [LocalDecl.cdecl (← getLCtx).decls.size fvarId userName α BinderInfo.default] do
-    QQ.qq $ ← mkLet' userName (mkFVar fvarId) α val (← k ⟨mkFVar fvarId⟩)
+    QQ.qq $ ← mkLet' userName (mkFVar fvarId) α val (← k (mkFVar fvarId))
 
 def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
     TermElabM Q($γ) → TermElabM Q($γ)
@@ -99,31 +98,30 @@ def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType de
     withLetHave fvarId userName (α := q(Level)) q($acc.1) fun fvar => mkQqLets decls q($acc.2) cb
   | { ty := some ty, fvarId := fvarId, userName := userName } :: decls, acc, cb =>
     let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
-    withLetHave fvarId userName (α := q(QQ $ty)) q(⟨$acc.1⟩) fun fvar => mkQqLets decls q($acc.2) cb
+    withLetHave fvarId userName (α := q(QQ $ty)) q($acc.1) fun fvar => mkQqLets decls q($acc.2) cb
   | [], acc, cb => cb
 
 def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
   | [], e => e
   | { ty := some ty, fvarId := fvarId, .. } :: decls, e =>
-    ((replaceTempExprsByQVars decls e).abstract #[mkFVar fvarId]).instantiate
-      #[mkApp2 (mkConst ``QQ.quoted) ty (mkFVar fvarId)]
+    ((replaceTempExprsByQVars decls e).abstract #[mkFVar fvarId]).instantiate #[mkFVar fvarId]
   | { ty := none, .. } :: decls, e =>
     replaceTempExprsByQVars decls e
 
-def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} [Q(MonadLiftT MetaM $m)] [Q(Bind $m)]
+def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLiftT MetaM $m)) (instBind : Q(Bind $m))
     (decls : List PatVarDecl) (ty : Q(Expr))
     (pat discr : Q(Expr)) (alt : Q($m $γ)) (k : TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
   let nextDecls : List PatVarDecl :=
-    decls.map fun decl => { decl with ty := decl.ty.map fun ⟨e⟩ => ⟨replaceTempExprsByQVars decls e⟩ }
+    decls.map fun decl => { decl with ty := decl.ty.map fun e => replaceTempExprsByQVars decls e }
   let next ← withLocalDeclD (← mkFreshBinderName) (mkIsDefEqType decls) fun fv => do
-    let fv : Q($(mkIsDefEqType decls)) := ⟨fv⟩
+    let fv : Q($(mkIsDefEqType decls)) := fv
     let next : Q($m $γ) :=
       q(if $(mkIsDefEqResultVal decls fv) then
-          $(← mkQqLets nextDecls ⟨fv⟩ do
+          $(← mkQqLets nextDecls fv do
             let pat : Q(Expr) := QQ.qq' $ replaceTempExprsByQVars decls pat
-            let h : Q(@Qq.isDefEq $ty (QQ.qq $discr) (QQ.qq $pat)) := q(⟨⟩)
-            withLetHave (← mkFreshId) `h h fun h => do
-              k)
+            -- let h : Q(@Qq.isDefEq $ty (QQ.qq $discr) (QQ.qq $pat)) := q(⟨⟩)
+            -- withLetHave (← mkFreshId) `h h fun h => do
+            k)
         else
           $alt)
     show Q($(mkIsDefEqType decls) → $m $γ) from
@@ -221,7 +219,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
 
   for ldecl in patVarDecls do
     let qty ← (quoteExpr ldecl.type).run s
-    oldPatVarDecls := oldPatVarDecls ++ [{ ty := some ⟨qty⟩, fvarId := ldecl.fvarId, userName := ldecl.userName }]
+    oldPatVarDecls := oldPatVarDecls ++ [{ ty := some qty, fvarId := ldecl.fvarId, userName := ldecl.userName }]
     s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr ldecl.toExpr }
 
   let m : Q(Type → Type) := QQ.qq' emr.m
@@ -229,8 +227,8 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
   let inst : Q(Bind $m) := QQ.qq' emr.hasBindInst
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
-  let alt : Q($m $γ) := ⟨alt⟩
-  QQ.quoted $ ← makeMatchCode oldPatVarDecls argTyExpr synthed q($e') alt do
+  let alt : Q($m $γ) := alt
+  makeMatchCode q(‹_›) inst oldPatVarDecls argTyExpr synthed q($e') alt do
     QQ.qq (← elabTerm body expectedType)
 
 scoped syntax "_qq_match" term " ← " term " | " doElem : term

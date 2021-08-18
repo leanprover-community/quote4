@@ -36,10 +36,6 @@ structure UnquoteState where
   -- maps free variables in the new context to levels in the old context (of type Level)
   levelBackSubst : HashMap Level Expr := {}
 
-  -- maps quoted whnfd expressions (of type QQ _)
-  -- to quoted expressions (of type Expr; obtained from isDefEq hypotheses)
-  exprRepl : HashMap Expr Expr := {}
-
   levelNames : List Name := []
 
 abbrev UnquoteM := StateT UnquoteState MetaM
@@ -78,11 +74,22 @@ def addSyntaxDollar : Syntax → Syntax
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   e.getAppFn.constName?.getD `udummy
 
+def isBad (e : Expr) : Bool := do
+  if let Expr.const (Name.str _ "rec" _) _ _ := e.getAppFn then
+    return true
+  return false
+
+partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
+  let e ← whnfCore e
+  let e0 := if isBad e then e0 else e
+  match ← unfoldDefinition? e with
+    | some e => whnf e (if isBad e then e0 else e)
+    | none => e0
+
 partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   let e ← whnf e
-  match (← get).levelSubst.find? e with
-    | some l => return l
-    | _ => ()
+  if let some l := (← get).levelSubst.find? e then
+    return l
   if e.isAppOfArity ``Level.zero 1 then levelZero
   else if e.isAppOfArity ``Level.succ 2 then mkLevelSucc (← unquoteLevel (e.getArg! 0))
   else if e.isAppOfArity ``Level.max 3 then mkLevelMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
@@ -125,7 +132,8 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
 
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if e.isAppOf ``toExpr then return e.getArg! 2
-  let eTy ← inferType e
+  let e ← whnf (← instantiateMVars e)
+  let eTy ← withReducible <| whnf (← inferType e)
   if eTy.isAppOfArity ``QQ 1 then
     if let some e' ← (← get).exprSubst.find? e then
       return e'
@@ -207,22 +215,11 @@ def unquoteLCtx (gadgets := true) : UnquoteM Unit := do
         exprBackSubst := s.exprBackSubst.insert fv fv
         exprSubst := s.exprSubst.insert fv fv
       }
-    else if whnfTy.isAppOfArity ``Level 1 then
+    else if whnfTy.isAppOfArity ``Level 0 then
       modify fun s => { s with
         levelNames := ldecl.userName :: s.levelNames
         levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
       }
-    -- else if whnfTy.isAppOfArity ``Qq.isDefEq 3 then
-    --   unless gadgets do continue
-    --   let lhs ← whnf <|
-    --     match ← whnf <| mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 1) with
-    --       | Expr.proj ``QQ 0 a _ => a
-    --       | _ => whnfTy.getArg! 1
-    --   let rhs := mkApp2 (mkConst ``Qq.QQ.quoted) (whnfTy.getArg! 0) (whnfTy.getArg! 2)
-    --   if lhs.isFVar && rhs.containsFVar lhs.fvarId! then continue -- TODO larger cycles
-    --   modify fun s => { s with
-    --     exprRepl := s.exprRepl.insert lhs rhs
-    --   }
     else
       let Level.succ u _ ← getLevel ty | ()
       let LOption.some inst ← trySynthInstance (mkApp (mkConst ``ToExpr [u]) ty) | ()
@@ -315,6 +312,7 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
 
     let ty ← withReducible <| whnf mdecl.type
     let ty ← instantiateMVars ty
+    -- dbg_trace "{mvar} {ty}"
     if ty.isAppOf ``QQ then
       let et := ty.getArg! 0
       let newET ← unquoteExpr et
@@ -349,13 +347,23 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
 def lctxHasMVar : MetaM Bool := do
   (← getLCtx).anyM fun decl => do (← instantiateLocalDeclMVars decl).hasExprMVar
 
+partial def getMVars' (e : Expr) : MetaM (Array MVarId) := go e {}
+  where
+    go (e : Expr) (mvars : Array MVarId) : MetaM (Array MVarId) := do
+      let mut mvars := mvars
+      for mvarId in ← getMVars e do
+        mvars ← go (← inferType (mkMVar mvarId)) mvars
+        unless mvars.contains mvarId do
+          mvars := mvars.push mvarId
+      mvars
+
 end Impl
 
 open Lean.Elab Lean.Elab.Tactic Lean.Elab.Term Impl
 
 def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let lastId := (← mkFreshExprMVar expectedType).mvarId!
-  let mvars := (← getMVars expectedType).push lastId
+  let mvars := (← getMVars' expectedType).push lastId
   let ((exprMVarSubst, mvarSynth), s) ← (unquoteMVars mvars).run {}
 
   let lastId := (exprMVarSubst.find! mvars.back).mvarId!
@@ -390,7 +398,7 @@ scoped elab "q(" t:incQuotDepth(term) ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
   ensureHasType expectedType $ ← commitIfDidNotPostpone do
-    let mut expectedType ← withReducible <| whnf expectedType
+    let mut expectedType ← withReducible <| Impl.whnf expectedType
     if !expectedType.isAppOfArity ``QQ 1 then
       let u ← mkFreshExprMVar (mkConst ``Level)
       let u' := mkApp (mkConst ``mkSort) u
@@ -459,3 +467,7 @@ macro_rules
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     t
+
+-- example : Expr := q(Nat)
+-- #check q(Nat)
+-- #check show Expr from q(Nat)
