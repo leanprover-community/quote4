@@ -9,14 +9,14 @@ namespace Qq
 namespace Impl
 
 def evalBinderInfoData (e : Expr) : MetaM BinderInfo :=
-  if e.isAppOfArity ``Expr.mkDataForBinder 7 then
-    reduceEval (e.getArg! 6)
+  if e.isAppOfArity ``Expr.mkDataForBinder 8 then
+    reduceEval (e.getArg! 7)
   else
     throwFailedToEval e
 
 def evalNonDepData (e : Expr) : MetaM Bool :=
-  if e.isAppOfArity ``Expr.mkDataForLet 7 then
-    reduceEval (e.getArg! 6)
+  if e.isAppOfArity ``Expr.mkDataForLet 8 then
+    reduceEval (e.getArg! 7)
   else
     throwFailedToEval e
 
@@ -124,7 +124,23 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
     throwFailedToEval e
 
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
-  if e.isAppOf ``toExpr then return e.getArg! 2
+  if e.isAppOfArity ``QQ.qq 2 then return ← unquoteExpr (e.getArg! 1)
+  if e.isAppOfArity ``toExpr 3 then return e.getArg! 2
+  let e ← whnf (← instantiateMVars e)
+  let eTy ← withReducible <| whnf (← inferType e)
+  if eTy.isAppOfArity ``QQ 1 then
+    if let some e' ← (← get).exprSubst.find? e then
+      return e'
+    let ty ← unquoteExpr (eTy.getArg! 0)
+    let fvarId := FVarId.mk (← mkFreshId)
+    let name ← mkAbstractedName e
+    let fv := mkFVar fvarId
+    modify fun s => { s with
+      unquoted := s.unquoted.mkLocalDecl fvarId name ty
+      exprSubst := s.exprSubst.insert e fv
+      exprBackSubst := s.exprBackSubst.insert fv e
+    }
+    return fv
   let e ← whnf e
   match e with
     | Expr.proj ``QQ 0 a _ =>
@@ -140,7 +156,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
           let ta ← whnf ta
           if !ta.isAppOfArity ``QQ 1 then throwError "unquoteExpr: {ta}"
           let ty ← unquoteExpr (ta.getArg! 0)
-          let fvarId ← mkFreshId
+          let fvarId := FVarId.mk (← mkFreshId)
           let name ← mkAbstractedName a
           let fv := mkFVar fvarId
           modify fun s => { s with
@@ -296,7 +312,7 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
   for mvar in mvars do
     let mdecl ← (← getMCtx).getDecl mvar
     if !(lctx.isSubPrefixOf mdecl.lctx && mdecl.lctx.isSubPrefixOf lctx) then
-      throwError "incompatible metavariable {mvar}\n{MessageData.ofGoal mvar}"
+      throwError "incompatible metavariable {mvar.name}\n{MessageData.ofGoal mvar}"
 
     let ty ← whnf mdecl.type
     let ty ← instantiateMVars ty

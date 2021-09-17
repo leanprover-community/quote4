@@ -116,7 +116,7 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} [Q(MonadLiftT MetaM $m
           $(← mkQqLets nextDecls ⟨fv⟩ do
             let pat : Q(Expr) := QQ.qq' $ replaceTempExprsByQVars decls pat
             let h : Q(@Qq.isDefEq $ty (QQ.qq $discr) (QQ.qq $pat)) := q(⟨⟩)
-            withLetHave (← mkFreshId) `h h fun h => do
+            withLetHave (FVarId.mk (← mkFreshId)) `h h fun h => do
               k)
         else
           $alt)
@@ -176,14 +176,14 @@ def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (
 
           for (patVar, nargs, mvar) in patVars do
             assert! mvar.isMVar
-            let fvarId ← mkFreshId
+            let fvarId := FVarId.mk (← mkFreshId)
             let type ← inferType mvar
             newDecls := newDecls.push $
               LocalDecl.cdecl arbitrary fvarId patVar type BinderInfo.default
             assignExprMVar mvar.mvarId! (mkFVar fvarId)
 
           for newMVar in ← getMVars pat do
-            let fvarId ← mkFreshId
+            let fvarId := FVarId.mk (← mkFreshId)
             let type ← instantiateMVars (← Meta.getMVarDecl newMVar).type
             let userName ← mkFreshBinderName
             newDecls := newDecls.push $
@@ -209,7 +209,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
   let mut s := s
   let mut oldPatVarDecls : List PatVarDecl := []
   for newLevel in newLevels do
-    let fvarId ← mkFreshId
+    let fvarId := FVarId.mk (← mkFreshId)
     oldPatVarDecls := oldPatVarDecls ++ [{ ty := none, fvarId := fvarId, userName := newLevel }]
     s := { s with levelBackSubst := s.levelBackSubst.insert (mkLevelParam newLevel) (mkFVar fvarId) }
 

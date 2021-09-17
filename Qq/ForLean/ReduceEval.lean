@@ -72,3 +72,19 @@ instance : ReduceEval Literal where
       Literal.strVal (← reduceEval (e.getArg! 0))
     else
       throwFailedToEval e
+
+instance : ReduceEval MVarId where
+  reduceEval e := do
+    let e ← whnf e
+    if e.isAppOfArity ``MVarId.mk 1 then
+      return ⟨← reduceEval (e.getArg! 0)⟩
+    else
+      throwFailedToEval e
+
+instance : ReduceEval FVarId where
+  reduceEval e := do
+    let e ← whnf e
+    if e.isAppOfArity ``FVarId.mk 1 then
+      return ⟨← reduceEval (e.getArg! 0)⟩
+    else
+      throwFailedToEval e
