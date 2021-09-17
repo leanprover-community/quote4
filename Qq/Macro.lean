@@ -9,14 +9,14 @@ namespace Qq
 namespace Impl
 
 def evalBinderInfoData (e : Expr) : MetaM BinderInfo :=
-  if e.isAppOfArity ``Expr.mkDataForBinder 7 then
-    reduceEval (e.getArg! 6)
+  if e.isAppOfArity ``Expr.mkDataForBinder 8 then
+    reduceEval (e.getArg! 7)
   else
     throwFailedToEval e
 
 def evalNonDepData (e : Expr) : MetaM Bool :=
-  if e.isAppOfArity ``Expr.mkDataForLet 7 then
-    reduceEval (e.getArg! 6)
+  if e.isAppOfArity ``Expr.mkDataForLet 8 then
+    reduceEval (e.getArg! 7)
   else
     throwFailedToEval e
 
@@ -140,7 +140,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     if let some e' ← (← get).exprSubst.find? e then
       return e'
     let ty ← unquoteExpr (eTy.getArg! 0)
-    let fvarId ← mkFreshId
+    let fvarId := FVarId.mk (← mkFreshId)
     let name ← mkAbstractedName e
     let fv := mkFVar fvarId
     modify fun s => { s with
@@ -285,7 +285,7 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
   for mvar in mvars do
     let mdecl ← (← getMCtx).getDecl mvar
     if !(lctx.isSubPrefixOf mdecl.lctx && mdecl.lctx.isSubPrefixOf lctx) then
-      throwError "incompatible metavariable {mvar}\n{MessageData.ofGoal mvar}"
+      throwError "incompatible metavariable {mvar.name}\n{MessageData.ofGoal mvar}"
 
     let ty ← withReducible <| whnf mdecl.type
     let ty ← instantiateMVars ty
