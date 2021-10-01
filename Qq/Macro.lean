@@ -346,7 +346,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let lastDecl ← Lean.Elab.Term.getMVarDecl lastId
 
   withLevelNames s.levelNames do
-    resettingSynthInstanceCache do
+    try resettingSynthInstanceCache do
       withLCtx lastDecl.lctx lastDecl.localInstances do
         let t ← Lean.Elab.Term.elabTerm t lastDecl.type
         let t ← ensureHasType lastDecl.type t
@@ -354,6 +354,10 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
         if (← logUnassignedUsingErrorInfos (← getMVars t)) then
           throwAbortTerm
         assignExprMVar lastId t
+    catch e =>
+      if let some n := isAutoBoundImplicitLocalException? e then
+        throwError "unsupported implicit auto-bound: {n} is not a level name"
+      throw e
 
     for newLevelName in (← getLevelNames) do
       if s.levelNames.contains newLevelName || (← isLevelFVar newLevelName).isSome then

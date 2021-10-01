@@ -138,8 +138,4 @@ def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
   a + a defEq 0)
 ```
 
-- Auto-bound implicit types
-  send Lean into an infinite loop
-  (not universes though).
-
 - Other bug fixes, documentation, and assorted polishing.
