@@ -227,7 +227,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
 
   let m : Q(Type → Type) := QQ.qq' emr.m
   let γ : Q(Type) := QQ.qq' emr.α
-  let inst : Q(Bind $m) := QQ.qq' emr.hasBindInst
+  let inst ← synthInstanceQ q(Bind $m)
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q($m $γ) := alt

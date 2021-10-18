@@ -5,9 +5,9 @@ EXAMPLES = $(wildcard examples/*.lean)
 all: build examples
 
 build:
-	leanpkg build
+	lake build
 
 examples: $(addsuffix .run, $(EXAMPLES))
 
 examples/%.run: build
-	LEAN_PATH=build lean examples/$*
+	LEAN_PATH=build/lib lean examples/$*
