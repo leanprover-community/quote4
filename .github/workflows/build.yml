@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: build qq
-        run: leanpkg build
+        run: lake build
 
       - name: run examples
         run: make examples
