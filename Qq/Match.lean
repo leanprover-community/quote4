@@ -7,7 +7,7 @@ open Lean in
 partial def Lean.Syntax.stripPos : Syntax → Syntax
   | atom info a => atom SourceInfo.none a
   | ident info r v p => ident SourceInfo.none r v p
-  | node kind args => node kind (args.map stripPos)
+  | node info kind args => node SourceInfo.none kind (args.map stripPos)
   | missing => missing
 
 open Lean Elab Term Meta
@@ -147,7 +147,7 @@ partial def getPatVars (pat : Syntax) : StateT (Array (Name × Nat × Expr)) Ter
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
     | _ => if isPatVar pat then return ← mkMVar pat #[]
   match pat with
-    | Syntax.node kind args => Syntax.node kind (← args.mapM getPatVars)
+    | Syntax.node info kind args => Syntax.node info kind (← args.mapM getPatVars)
     | pat => pat
 
   where
@@ -285,7 +285,7 @@ partial def Impl.floatQMatch (alt : Syntax) : Syntax → StateT (List Syntax) Ma
       modify fun s => s ++ [auxDoElem]
       `(x)
   | stx => do match stx with
-    | Syntax.node k args => Syntax.node k (← args.mapM (floatQMatch alt))
+    | Syntax.node i k args => Syntax.node i k (← args.mapM (floatQMatch alt))
     | stx => stx
 
 private def push (i : Syntax) : StateT (Array Syntax) MacroM Unit :=
@@ -305,7 +305,7 @@ private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array Syntax) Ma
       stx
   else
     match stx with
-    | Syntax.node k args => do Syntax.node k (← args.mapM floatLevelAntiquot)
+    | Syntax.node i k args => do Syntax.node i k (← args.mapM floatLevelAntiquot)
     | stx => stx
 
 private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array Syntax) MacroM Syntax
@@ -331,7 +331,7 @@ private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array S
           addSyntaxDollar <|<- `(a)
     else
       match stx with
-      | Syntax.node k args => do Syntax.node k (← args.mapM (floatExprAntiquot depth))
+      | Syntax.node i k args => do Syntax.node i k (← args.mapM (floatExprAntiquot depth))
       | stx => stx
 
 macro_rules

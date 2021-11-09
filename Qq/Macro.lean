@@ -273,7 +273,7 @@ partial def quoteExpr : Expr → QuoteM Expr
     mkApp5 (mkConst ``mkLet) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d.nonDepLet)
   | Expr.lit l _ => mkApp (mkConst ``mkLit) (toExpr l)
   | Expr.proj n i e _ => do mkApp3 (mkConst ``mkProj) (toExpr n) (toExpr i) (← quoteExpr e)
-  | e => throwError "quoteExpr todo {e}"
+  | Expr.mdata mdata e _ => quoteExpr e
 
 def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashMap MVarId (QuoteM Expr)) := do
   let mut exprMVarSubst : HashMap MVarId Expr := HashMap.empty
@@ -410,7 +410,7 @@ partial def floatLevelAntiquot [Monad m] [MonadQuotation m] (stx : Syntax) :
       `(u)
   else
     match stx with
-    | Syntax.node k args => do Syntax.node k (← args.mapM floatLevelAntiquot)
+    | Syntax.node i k args => do Syntax.node i k (← args.mapM floatLevelAntiquot)
     | stx => stx
 
 partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
@@ -432,7 +432,7 @@ partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
           addSyntaxDollar <|<- `(a)
     else
       match stx with
-      | Syntax.node k args => do Syntax.node k (← args.mapM (floatExprAntiquot depth))
+      | Syntax.node i k args => do Syntax.node i k (← args.mapM (floatExprAntiquot depth))
       | stx => stx
 
 macro_rules
