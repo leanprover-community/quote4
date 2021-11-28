@@ -1,27 +1,31 @@
 # Expression quotations for Lean 4
 
-This package combines the
-intuitiveness of modal sequent calculus
-with the power and speed of
+This package implements type-safe expression
+quotations, which are a particularly
+convenient way of constructing object-level
+expressions (`Expr`) in meta-level code.
+
+It combines the intuitiveness of modal sequent
+calculus with the power and speed of
 Lean 4's metaprogramming facilities.
-It introduces the `Q(·)` modality:
+The `Q(·)` modality quotes types:
 `Q(α)` denotes an expression of type `α`.
 The type former comes with the following
 natural introduction rule:
 
 ```
-$a :   α,  $b :   β,  $c :   γ  ⊢   t  : Type
----------------------------------------------
- a : Q(α),  b : Q(β),  c : Q(γ) ⊢ Q(t) : Type
+$a₁ :   α₁,  …, $aₙ :   αₙ  ⊢   t  : Type
+-----------------------------------------
+ a₁ : Q(α₁), …,  aₙ : Q(αₙ) ⊢ Q(t) : Type
 ```
 
 The lower-case `q(·)` macro serves
 as the modal inference rule,
 allowing us to construct values in `Q(·)`:
 ```
-$a :   α,  $b :   β,  $c :   γ  ⊢   t  :   δ
----------------------------------------------
- a : Q(α),  b : Q(β),  c : Q(γ) ⊢ q(t) : Q(δ)
+$a₁ :   α₁,  …, $aₙ :   αₙ  ⊢   t  :   β
+-----------------------------------------
+ a₁ : Q(α₁), …,  aₙ : Q(αₙ) ⊢ q(t) : Q(β)
 ```
 
 ## Example
@@ -34,6 +38,10 @@ open Qq
 
 set_option trace.compiler.ir.result true in
 
+-- Note: `betterApp` actually has two additional parameters
+-- `{u v : Lean.Level}` auto-generated due to option
+-- `autoBoundImplicitLocal`.
+
 def betterApp {α : Q(Sort u)} {β : Q($α → Sort v)}
   (f : Q((a : α) → $β a)) (a : Q($α)) : Q($β $a) :=
 q($f $a)
@@ -43,16 +51,26 @@ q($f $a)
 
 There are many things going on here:
 1. The `betterApp` function compiles to a single `mkApp` call.
-1. It does not require the `MetaM` monad.
-1. Implicit arguments (such as `α` or `u`) get filled in by type inference.
-1. The second argument, `q(42)`,
-   correctly constructs an expression of type `Int`.
+1. It does not require the `MetaM` monad (in contrast to
+   `AppBuilder.lean` in the Lean 4 code).
+1. `Q(…)` is definitionally equal to `Expr`, so each variable
+   in the example is just an `Expr`.
+1. Nevertheless, implicit arguments of the definition (such as `α`
+   or `u`) get filled in by type inference, which reduces the
+   potential for errors even in the absence of strong type safety
+   at the meta level.
+1. All quoted expressions, i.e. all code inside `Q(·)` and `q(·)`,
+   are type-safe (under the assumption that the values of `α`,
+   `f`, etc. really have their declared types).
+1. The second argument in the `#eval` example, `q(42)`,
+   correctly constructs an expression of type `Int`, as
+   determined by the first argument.
 
 Because `betterApp`
 takes `α` and `u` (and `β` and `v`) as arguments,
-it can also perform more interesting tasks:
-for example,
-we can change `q(f a)` into `q(id f a)`
+it can also perform more interesting tasks compared
+to the untyped function `mkApp`: for example,
+we can change `q($f $a)` into `q(id $f $a)`
 without changing the interface
 (even though the resulting expression
 now contains both the type and the universe level).
