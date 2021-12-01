@@ -71,8 +71,8 @@ def addSyntaxDollar : Syntax → Syntax
     Syntax.ident info rawVal (addDollar val) preresolved
   | stx => panic! "addSyntaxDollar {stx}"
 
-def mkAbstractedLevelName (e : Expr) : MetaM Name :=
-  e.getAppFn.constName?.getD `udummy
+def mkAbstractedLevelName (e : Expr) : MetaM Name := do
+  e.getAppFn.constName?.getD `udummy ++ (← mkFreshId)
 
 def isBad (e : Expr) : Bool := do
   if let Expr.const (Name.str _ "rec" _) _ _ := e.getAppFn then
