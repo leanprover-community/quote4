@@ -10,4 +10,4 @@ build:
 examples: $(addsuffix .run, $(EXAMPLES))
 
 examples/%.run: build
-	LEAN_PATH=build/lib lean examples/$*
+	lake env lean examples/$*
