@@ -22,7 +22,7 @@ def orChange : (ps : List ((u : Level) × Q(Type u))) → Q($(or1 ps) → $(or2 
   | [] => q(id)
   | [⟨u, p⟩] => q(Sum.inl)
   | ⟨u, p⟩::(ps1::ps2) =>
-    let this := orChange (ps1::ps2)
+    let h := orChange (ps1::ps2)
     q(fun h => match h with
       | Sum.inl l => Sum.inl l
-      | Sum.inr r => Sum.inr ($this r))
+      | Sum.inr r => Sum.inr ($h r))

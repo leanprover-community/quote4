@@ -11,7 +11,7 @@ namespace Lean.Elab.Term
 def mkIdBindFor (type : Expr) : TermElabM ExtractMonadResult := do
   let u ← getDecLevel type
   let id        := Lean.mkConst ``Id [u]
-  pure { m := id, α := type, expectedType := mkApp id type, isPure := true }
+  pure { m := id, α := type, expectedType := mkApp id type }
 
 partial def extractBind (expectedType? : Option Expr) : TermElabM ExtractMonadResult := do
   match expectedType? with
@@ -20,7 +20,7 @@ partial def extractBind (expectedType? : Option Expr) : TermElabM ExtractMonadRe
     let extractStep? (type : Expr) : MetaM (Option ExtractMonadResult) := do
       match type with
       | Expr.app m α _ =>
-        return some { m := m, α := α, expectedType := expectedType, isPure := false }
+        return some { m := m, α := α, expectedType := expectedType }
       | _ =>
         return none
     let rec extract? (type : Expr) : MetaM (Option ExtractMonadResult) := do

@@ -11,7 +11,7 @@ def baz (u : Level) : Type := Q(Sort u)
 #check q(∀ x, x = x + 0)
 
 example {α : Q(Type u)} (inst : Q(Inhabited $α)) : Q(∃ x : $α, x = x) :=
-  q(⟨arbitrary, by rfl⟩)
+  q(⟨default, by rfl⟩)
 
 example : Q(let x := 5; x = x) := q(by simp)
 

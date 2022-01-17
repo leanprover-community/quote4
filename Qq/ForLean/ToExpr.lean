@@ -44,7 +44,7 @@ instance : ToExpr BinderInfo where
 
 instance : ToExpr MData where
   toTypeExpr := mkConst ``MData
-  toExpr md := do
+  toExpr md := Id.run do
     let mut e := mkConst ``MData.empty
     for (k, v) in md do
       let k := toExpr k
@@ -54,6 +54,7 @@ instance : ToExpr MData where
       | ofName v   => mkApp3 (mkConst ``KVMap.setName) e k (toExpr v)
       | ofNat v    => mkApp3 (mkConst ``KVMap.setNat) e k (toExpr v)
       | ofInt v    => mkApp3 (mkConst ``KVMap.setInt) e k (toExpr v)
+      | ofSyntax v => e -- TODO
     e
 
 open Expr Literal in

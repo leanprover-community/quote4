@@ -74,7 +74,7 @@ def addSyntaxDollar : Syntax → Syntax
 def mkAbstractedLevelName (e : Expr) : MetaM Name := do
   e.getAppFn.constName?.getD `udummy ++ (← mkFreshId)
 
-def isBad (e : Expr) : Bool := do
+def isBad (e : Expr) : Bool := Id.run do
   if let Expr.const (Name.str _ "rec" _) _ _ := e.getAppFn then
     return true
   return false

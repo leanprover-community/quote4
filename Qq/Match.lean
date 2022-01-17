@@ -186,7 +186,7 @@ def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (
             let fvarId := FVarId.mk (← mkFreshId)
             let type ← inferType mvar
             newDecls := newDecls.push $
-              LocalDecl.cdecl arbitrary fvarId patVar type BinderInfo.default
+              LocalDecl.cdecl default fvarId patVar type BinderInfo.default
             assignExprMVar mvar.mvarId! (mkFVar fvarId)
 
           for newMVar in ← getMVars pat do
@@ -194,7 +194,7 @@ def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (
             let type ← instantiateMVars (← Meta.getMVarDecl newMVar).type
             let userName ← mkFreshBinderName
             newDecls := newDecls.push $
-              LocalDecl.cdecl arbitrary fvarId userName type BinderInfo.default
+              LocalDecl.cdecl default fvarId userName type BinderInfo.default
             assignExprMVar newMVar (mkFVar fvarId)
 
           withExistingLocalDecls newDecls.toList do
