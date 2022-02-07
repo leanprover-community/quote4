@@ -13,15 +13,15 @@ register_option pp.qq : Bool := {
 
 -- TODO: this probably exists in the library
 private def failureOnError (x : MetaM α) : DelabM α := do
-  let y : MetaM (Option α) := do try some (← x) catch _ => none
+  let y : MetaM (Option α) := do try return some (← x) catch _ => return none
   match ← y with
-    | some a => a
+    | some a => return a
     | none => failure
 
 private def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
   unquoteLCtx
   let newE ← unquoteExpr e
-  (newE, (← get).unquoted)
+  return (newE, (← get).unquoted)
 
 def delabQuoted : Delab :=
   whenPPOption (·.getBool `pp.qq) do

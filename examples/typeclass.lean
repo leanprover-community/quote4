@@ -10,4 +10,4 @@ example : Q(Nat) :=
 open Lean in
 #eval show MetaM Q(Nat) from do
   let _ ← synthInstanceQ q(Inhabited Nat)
-  typeClassArgument q(Nat) q(inferInstance)
+  return typeClassArgument q(Nat) q(inferInstance)

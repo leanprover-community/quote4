@@ -51,7 +51,7 @@ def mkLambdaQ (n : Name) (fvar : QQ α) (body : QQ β) : QQ (mkForall n BinderIn
   mkLambda n BinderInfo.default α (body.abstract #[fvar])
 
 def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → Q(MetaM $(mkIsDefEqType decls))
-  | [] => q($(mkIsDefEqResult true decls))
+  | [] => q(return $(mkIsDefEqResult true decls))
   -- https://github.com/leanprover/lean4/issues/501
   | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
@@ -77,7 +77,7 @@ def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
       by exact if matches? then
         $(mkInstantiateMVars decls decls)
       else
-        $(mkIsDefEqResult false decls))
+        return $(mkIsDefEqResult false decls))
 
 def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : Q(MetaM $(mkIsDefEqType decls)) :=
   q(withNewMCtxDepth $(mkIsDefEqCore decls pat discr decls))
@@ -85,7 +85,7 @@ def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : Q(MetaM $(mkIsDe
 def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLCtx m]
     (fvarId : FVarId) (userName : Name) (val : (QQ α)) (k : (QQ α) → m (QQ β)) : m (QQ β) := do
   withExistingLocalDecls [LocalDecl.cdecl (← getLCtx).decls.size fvarId userName α BinderInfo.default] do
-    QQ.qq $ ← mkLet' userName (mkFVar fvarId) α val (← k (mkFVar fvarId))
+    return QQ.qq $ mkLet' userName (mkFVar fvarId) α val (← k (mkFVar fvarId))
 
 def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
     TermElabM Q($γ) → TermElabM Q($γ)
@@ -124,10 +124,10 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLif
             withLCtx lctx (← determineLocalInstances lctx) do
               let res ← k expectedType
               let res : Q($m $γ) ← instantiateMVars res
-              res)
+              return res)
         else
           $alt)
-    show Q($(mkIsDefEqType decls) → $m $γ) from
+    return show Q($(mkIsDefEqType decls) → $m $γ) from
       QQ.qq $ mkLambda' `result fv (mkIsDefEqType decls) next
   pure q(Bind.bind $(mkIsDefEq decls pat discr) $next)
 
@@ -135,7 +135,7 @@ def unquoteForMatch (et : Expr) : UnquoteM (LocalContext × LocalInstances × Ex
   unquoteLCtx
   let newET ← unquoteExpr et
   let newLCtx := (← get).unquoted
-  (newLCtx, ← determineLocalInstances newLCtx, newET)
+  return (newLCtx, ← determineLocalInstances newLCtx, newET)
 
 def mkNAryFunctionType : Nat → MetaM Expr
   | 0 => mkFreshTypeMVar
@@ -147,8 +147,8 @@ partial def getPatVars (pat : Syntax) : StateT (Array (Name × Nat × Expr)) Ter
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
     | _ => if isPatVar pat then return ← mkMVar pat #[]
   match pat with
-    | Syntax.node info kind args => Syntax.node info kind (← args.mapM getPatVars)
-    | pat => pat
+    | Syntax.node info kind args => return Syntax.node info kind (← args.mapM getPatVars)
+    | pat => return pat
 
   where
 
@@ -198,7 +198,7 @@ def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (
             assignExprMVar newMVar (mkFVar fvarId)
 
           withExistingLocalDecls newDecls.toList do
-            (← instantiateMVars pat,
+            return (← instantiateMVars pat,
               ← sortLocalDecls (← newDecls.mapM fun d => instantiateLocalDeclMVars d),
               r.newParamNames)
 
@@ -231,8 +231,8 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q($m $γ) := alt
-  makeMatchCode q(‹_›) inst oldPatVarDecls argTyExpr synthed q($e') alt expectedType fun expectedType => do
-    QQ.qq (← elabTerm body expectedType)
+  makeMatchCode q(‹_›) inst oldPatVarDecls argTyExpr synthed q($e') alt expectedType fun expectedType =>
+    return QQ.qq (← elabTerm body expectedType)
 
 scoped syntax "_qq_match" term " ← " term " | " doElem : term
 macro_rules
@@ -259,12 +259,12 @@ scoped macro "comefrom" n:ident "do" b:doElem : doElem =>
 
 def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat rhs alt : Syntax) : m (List Syntax) := do
   match pat with
-    | `(_) => []
+    | `(_) => return []
     | _ =>
       if isIrrefutablePattern pat then
-        [← `(doSeqItem| let $pat:term ← $rhs)]
+        return [← `(doSeqItem| let $pat:term ← $rhs)]
       else
-        [← `(doSeqItem| let $pat:term ← $rhs | $alt)]
+        return [← `(doSeqItem| let $pat:term ← $rhs | $alt)]
 
 end Impl
 
@@ -285,8 +285,8 @@ partial def Impl.floatQMatch (alt : Syntax) : Syntax → StateT (List Syntax) Ma
       modify fun s => s ++ [auxDoElem]
       `(x)
   | stx => do match stx with
-    | Syntax.node i k args => Syntax.node i k (← args.mapM (floatQMatch alt))
-    | stx => stx
+    | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatQMatch alt))
+    | stx => return stx
 
 private def push (i : Syntax) : StateT (Array Syntax) MacroM Unit :=
   modify fun s => s.push i
@@ -302,11 +302,11 @@ private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array Syntax) Ma
         push <|<- `(doSeqItem| let u : Level := $(stx.getAntiquotTerm))
         `(u)
     else
-      stx
+      pure stx
   else
     match stx with
-    | Syntax.node i k args => do Syntax.node i k (← args.mapM floatLevelAntiquot)
-    | stx => stx
+    | Syntax.node i k args => return Syntax.node i k (← args.mapM floatLevelAntiquot)
+    | stx => return stx
 
 private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array Syntax) MacroM Syntax
   | stx@`(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
@@ -317,22 +317,22 @@ private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array S
     if stx.isAntiquot && !stx.isEscapedAntiquot then
       let term := stx.getAntiquotTerm
       if term.isIdent then
-        stx
+        return stx
       else if depth > 0 then
-        Syntax.mkAntiquotNode (← floatExprAntiquot (depth - 1) term)
+        return Syntax.mkAntiquotNode (← floatExprAntiquot (depth - 1) term)
       else
         match unpackParensIdent stx.getAntiquotTerm with
           | some id =>
             if id.getId.isAtomic then
               return (addSyntaxDollar id)
-          | none => ()
+          | none => pure ()
         withFreshMacroScope do
           push <|<- `(doSeqItem| let a : QQ _ := $term)
-          addSyntaxDollar <|<- `(a)
+          addSyntaxDollar <$> `(a)
     else
       match stx with
-      | Syntax.node i k args => do Syntax.node i k (← args.mapM (floatExprAntiquot depth))
-      | stx => stx
+      | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatExprAntiquot depth))
+      | stx => return stx
 
 macro_rules
   | `(doElem| let $pat:term ← $rhs) => do
@@ -350,7 +350,7 @@ macro_rules
             | `(doElem| $id:ident $rhs:term) =>
               if id.getId.eraseMacroScopes == `pure then -- TODO: super hacky
                 return ← `(doSeqItem| assert! (_qq_match $pat ← $rhs | $alt))
-            | _ => ()
+            | _ => pure ()
           `(doSeqItem| do let rhs ← $rhs; assert! (_qq_match $pat ← rhs | $alt)))
 
         `(doElem| do $(lifts.push t):doSeqItem*)
@@ -370,7 +370,7 @@ macro_rules
   | `(doElem| match $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
     if !patss.any (·.any hasQMatch) then Macro.throwUnsupported
     let discrs ← discrs.mapM fun d => withFreshMacroScope do
-      (← `(x), ← `(doSeqItem| let x := $d:term))
+      pure (← `(x), ← `(doSeqItem| let x := $d:term))
     let mut items := discrs.map (·.2)
     let discrs := discrs.map (·.1)
     items := items.push (← `(doSeqItem| comefrom alt do throwError "nonexhaustive match"))

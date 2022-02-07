@@ -6,29 +6,28 @@ namespace Qq
 
 namespace Impl
 
-open Expr in
 @[specialize]
 partial def recurse (f : Expr → MetaM (Option Expr)) (e : Expr) : MetaM Expr := do
   if let some e' ← f e then
     return e'
   match e with
-  | app _ _ _ => mkAppN e.getAppFn (← e.getAppArgs.mapM (recurse f))
-  | lam n t e d =>
+  | Expr.app _ _ _ => return mkAppN e.getAppFn (← e.getAppArgs.mapM (recurse f))
+  | Expr.lam n t e d =>
     let t ← recurse f t
     withLocalDecl n d.binderInfo t fun x => do
       mkLambdaFVars #[x] <| ← recurse f (e.instantiate #[x])
-  | forallE n t e d =>
+  | Expr.forallE n t e d =>
     let t ← recurse f t
     withLocalDecl n d.binderInfo t fun x => do
       mkForallFVars #[x] <| ← recurse f (e.instantiate #[x])
-  | letE n t v e d =>
+  | Expr.letE n t v e d =>
     let t ← recurse f t
     let v ← recurse f v
     withLetDecl n t v fun x => do
       mkLetFVars #[x] <| ← recurse f (e.instantiate #[x])
-  | mdata md e _ => mkMData md (← recurse f e)
-  | proj n i e _ => mkProj n i (← recurse f e)
-  | e => e
+  | Expr.mdata md e _ => return mkMData md (← recurse f e)
+  | Expr.proj n i e _ => return mkProj n i (← recurse f e)
+  | e => return e
 
 def qrwInside (a b : Expr) : Expr → MetaM Expr :=
   recurse fun e => do
@@ -56,8 +55,8 @@ def qrwLCtx (s : UnquoteState) (a b : Expr) : MetaM LocalContext := do
       lctx' := lctx'.addDecl ldecl
     else
       lctx' := lctx'.addDecl <| ← withLCtx lctx' (← determineLocalInstances lctx') do
-        ldecl.setType (← qrwE s a b ldecl.type)
-  lctx'
+        return ldecl.setType (← qrwE s a b ldecl.type)
+  return lctx'
 
 end Impl
 
