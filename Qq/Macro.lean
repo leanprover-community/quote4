@@ -374,7 +374,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
 
   instantiateMVars (mkMVar mvars.back)
 
-scoped elab "q(" t:incQuotDepth(term) ")" : term <= expectedType => do
+scoped elab "q(" t:term ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   if expectedType.hasExprMVar then tryPostpone
   ensureHasType expectedType $ ← commitIfDidNotPostpone do
@@ -386,7 +386,7 @@ scoped elab "q(" t:incQuotDepth(term) ")" : term <= expectedType => do
       expectedType := mkApp (mkConst ``QQ) t
     Impl.macro t expectedType
 
-scoped elab "Q(" t:incQuotDepth(term) ")" : term <= expectedType => do
+scoped elab "Q(" t:term ")" : term <= expectedType => do
   let expectedType ← instantiateMVars expectedType
   let (true) ← isDefEq expectedType (mkSort (mkLevelSucc levelZero)) |
     throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"

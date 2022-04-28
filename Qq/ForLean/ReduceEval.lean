@@ -29,7 +29,7 @@ instance : ReduceEval UInt64 where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``UInt64.mk 1 then
-      let _ : ReduceEval (Fin UInt64.size) := instReduceEvalFinHAddNatInstHAddInstAddNatOfNat
+      let inst : ReduceEval (Fin UInt64.size) := instReduceEvalFinHAddNatInstHAddInstAddNatOfNat
       pure ⟨(← reduceEval (e.getArg! 0))⟩
     else
       throwFailedToEval e

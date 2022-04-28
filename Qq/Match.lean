@@ -2,6 +2,7 @@ import Qq.Macro
 import Qq.MetaM
 import Qq.ForLean.Do
 import Qq.Rw
+import Qq.SortLocalDecls
 
 open Lean in
 partial def Lean.Syntax.stripPos : Syntax → Syntax
@@ -176,7 +177,7 @@ def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (
 
           let mctx ← getMCtx
           let levelNames ← getLevelNames
-          let r := mctx.levelMVarToParam (fun n => levelNames.elem n) pat `u 1
+          let r := mctx.levelMVarToParam levelNames.elem (fun _ => false) pat `u 1
           setMCtx r.mctx
 
           let mut newDecls := #[]
@@ -272,7 +273,7 @@ section
 
 open Impl
 
-scoped syntax "~q(" incQuotDepth(term) ")" : term
+scoped syntax "~q(" term ")" : term
 
 partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($x)) => true

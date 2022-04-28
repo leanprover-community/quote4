@@ -61,7 +61,7 @@ def qrwLCtx (s : UnquoteState) (a b : Expr) : MetaM LocalContext := do
 end Impl
 
 open Impl Elab Term in
-elab "qrw" eq:incQuotDepth(term) ";" e:term : term <= expectedType => do
+elab "qrw" eq:term ";" e:term : term <= expectedType => do
   tryPostponeIfMVar expectedType
   unless eq matches `($a = $b) do throwErrorAt eq "not an equality"
   let (_, s) ← unquoteLCtx.run {}
