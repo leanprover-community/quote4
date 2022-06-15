@@ -69,7 +69,7 @@ def stripDollars : Name → Name
 def addSyntaxDollar : Syntax → Syntax
   | Syntax.ident info rawVal            val  preresolved =>
     Syntax.ident info rawVal (addDollar val) preresolved
-  | stx => panic! "addSyntaxDollar {stx}"
+  | stx => panic! s!"addSyntaxDollar {stx}"
 
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   return e.getAppFn.constName?.getD `udummy ++ (← mkFreshId)
@@ -228,7 +228,7 @@ abbrev QuoteM := ReaderT UnquoteState MetaM
 def quoteLevel : Level → QuoteM Expr
   | Level.zero _ => return mkConst ``levelZero
   | Level.succ u _ => return mkApp (mkConst ``mkLevelSucc) (← quoteLevel u)
-  | l@(Level.mvar n _) => throwError "level mvars not supported {l}"
+  | l@(Level.mvar ..) => throwError "level mvars not supported {l}"
   | Level.max a b _ => return mkApp2 (mkConst ``mkLevelMax) (← quoteLevel a) (← quoteLevel b)
   | Level.imax a b _ => return mkApp2 (mkConst ``mkLevelIMax) (← quoteLevel a) (← quoteLevel b)
   | l@(Level.param n _) => do
@@ -248,10 +248,10 @@ def quoteLevelList : List Level → QuoteM Expr
 
 partial def quoteExpr : Expr → QuoteM Expr
   | Expr.bvar i _ => return mkApp (mkConst ``mkBVar) (toExpr i)
-  | e@(Expr.fvar i _) => do
+  | e@(Expr.fvar ..) => do
     let some r := (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
     return r
-  | e@(Expr.mvar i _) => throwError "resulting term contains metavariable {e}"
+  | e@(Expr.mvar ..) => throwError "resulting term contains metavariable {e}"
   | Expr.sort u _ => return mkApp (mkConst ``mkSort) (← quoteLevel u)
   | Expr.const n ls _ => return mkApp2 (mkConst ``mkConst) (toExpr n) (← quoteLevelList ls)
   | e@(Expr.app _ _ _) => do
@@ -273,7 +273,7 @@ partial def quoteExpr : Expr → QuoteM Expr
     return mkApp5 (mkConst ``mkLet) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d.nonDepLet)
   | Expr.lit l _ => return mkApp (mkConst ``mkLit) (toExpr l)
   | Expr.proj n i e _ => return mkApp3 (mkConst ``mkProj) (toExpr n) (toExpr i) (← quoteExpr e)
-  | Expr.mdata mdata e _ => quoteExpr e
+  | Expr.mdata _ e _ => quoteExpr e
 
 def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashMap MVarId (QuoteM Expr)) := do
   let mut exprMVarSubst : HashMap MVarId Expr := HashMap.empty
@@ -294,7 +294,6 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
       let newET ← unquoteExpr et
       let newLCtx := (← get).unquoted
       let newLocalInsts ← determineLocalInstances newLCtx
-      let exprBackSubst := (← get).exprBackSubst
       let newMVar ← mkFreshExprMVarAt newLCtx newLocalInsts newET
       modify fun s => { s with exprSubst := s.exprSubst.insert (mkMVar mvar) newMVar }
       exprMVarSubst := exprMVarSubst.insert mvar newMVar
@@ -304,7 +303,6 @@ def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashM
       let u ← mkFreshLevelMVar
       let newLCtx := (← get).unquoted
       let newLocalInsts ← determineLocalInstances newLCtx
-      let exprBackSubst := (← get).exprBackSubst
       let newMVar ← mkFreshExprMVarAt newLCtx newLocalInsts (mkSort u)
       modify fun s => { s with exprSubst := s.exprSubst.insert (mkMVar mvar) newMVar }
       exprMVarSubst := exprMVarSubst.insert mvar newMVar
@@ -415,8 +413,8 @@ partial def floatLevelAntiquot [Monad m] [MonadQuotation m] (stx : Syntax) :
 
 partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
-  | stx@`(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
-  | stx@`(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
+  | `(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
+  | `(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
   | stx => do

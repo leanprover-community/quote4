@@ -6,9 +6,9 @@ import Qq.SortLocalDecls
 
 open Lean in
 partial def Lean.Syntax.stripPos : Syntax → Syntax
-  | atom info a => atom SourceInfo.none a
-  | ident info r v p => ident SourceInfo.none r v p
-  | node info kind args => node SourceInfo.none kind (args.map stripPos)
+  | atom _ a => atom .none a
+  | ident _ r v p => ident .none r v p
+  | node _ kind args => node .none kind (args.map stripPos)
   | missing => missing
 
 open Lean Elab Term Meta
@@ -40,7 +40,7 @@ def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q($(mkIsDefEqTy
 
 def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) → Q(Bool)
   | [], val => q($val)
-  | decl :: decls, val => mkIsDefEqResultVal decls q($val.2)
+  | _ :: decls, val => mkIsDefEqResultVal decls q($val.2)
 
 def mkLambda' (n : Name) (fvar : Expr) (ty : Expr) (body : Expr) : Expr :=
   mkLambda n BinderInfo.default ty (body.abstract #[fvar])
@@ -91,20 +91,19 @@ def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLCtx m]
 def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
     TermElabM Q($γ) → TermElabM Q($γ)
   | { ty := none, fvarId := fvarId, userName := userName } :: decls, acc, cb =>
-    let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
-    withLetHave fvarId userName (α := q(Level)) q($acc.1) fun fvar => mkQqLets decls q($acc.2) cb
+    withLetHave fvarId userName (α := q(Level)) q($acc.1) fun _ => mkQqLets decls q($acc.2) cb
   | { ty := some ty, fvarId := fvarId, userName := userName } :: decls, acc, cb =>
-    let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
-    withLetHave fvarId userName (α := q(QQ $ty)) q($acc.1) fun fvar => mkQqLets decls q($acc.2) cb
-  | [], acc, cb => cb
+    withLetHave fvarId userName (α := q(QQ $ty)) q($acc.1) fun _ => mkQqLets decls q($acc.2) cb
+  | [], _, cb => cb
 
 def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
   | [], e => e
-  | { ty := some ty, fvarId := fvarId, .. } :: decls, e =>
+  | { ty := some _, fvarId, .. } :: decls, e =>
     ((replaceTempExprsByQVars decls e).abstract #[mkFVar fvarId]).instantiate #[mkFVar fvarId]
   | { ty := none, .. } :: decls, e =>
     replaceTempExprsByQVars decls e
 
+set_option linter.all false in
 def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLiftT MetaM $m)) (instBind : Q(Bind $m))
     (decls : List PatVarDecl) (ty : Q(Expr))
     (pat discr : Q(Expr)) (alt : Q($m $γ)) (expectedType : Expr)
@@ -182,7 +181,7 @@ def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (
 
           let mut newDecls := #[]
 
-          for (patVar, nargs, mvar) in patVars do
+          for (patVar, _, mvar) in patVars do
             assert! mvar.isMVar
             let fvarId := FVarId.mk (← mkFreshId)
             let type ← inferType mvar
@@ -276,7 +275,7 @@ open Impl
 scoped syntax "~q(" term ")" : term
 
 partial def Impl.hasQMatch : Syntax → Bool
-  | `(~q($x)) => true
+  | `(~q($_)) => true
   | stx => stx.getArgs.any hasQMatch
 
 partial def Impl.floatQMatch (alt : Syntax) : Syntax → StateT (List Syntax) MacroM Syntax
@@ -310,8 +309,8 @@ private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array Syntax) Ma
     | stx => return stx
 
 private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array Syntax) MacroM Syntax
-  | stx@`(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
-  | stx@`(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
+  | `(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
+  | `(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
   | stx => do
@@ -336,7 +335,7 @@ private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array S
       | stx => return stx
 
 macro_rules
-  | `(doElem| let $pat:term ← $rhs) => do
+  | `(doElem| let $pat:term ← $_) => do
     if !hasQMatch pat then Macro.throwUnsupported
     Macro.throwError "let-bindings with ~q(.) require an explicit alternative"
 

@@ -1,5 +1,4 @@
 import Qq.Macro
--- import Qq.Delab
 open Lean Meta
 
 namespace Qq
@@ -20,7 +19,7 @@ partial def recurse (f : Expr → MetaM (Option Expr)) (e : Expr) : MetaM Expr :
     let t ← recurse f t
     withLocalDecl n d.binderInfo t fun x => do
       mkForallFVars #[x] <| ← recurse f (e.instantiate #[x])
-  | Expr.letE n t v e d =>
+  | Expr.letE n t v e .. =>
     let t ← recurse f t
     let v ← recurse f v
     withLetDecl n t v fun x => do
@@ -63,7 +62,7 @@ end Impl
 open Impl Elab Term in
 elab "qrw" eq:term ";" e:term : term <= expectedType => do
   tryPostponeIfMVar expectedType
-  unless eq matches `($a = $b) do throwErrorAt eq "not an equality"
+  unless eq matches `($_ = $_) do throwErrorAt eq "not an equality"
   let (_, s) ← unquoteLCtx.run {}
   let eq ← withLCtx s.unquoted (← determineLocalInstances s.unquoted) do
     let (eq, lifts) ← floatExprAntiquot 0 eq #[]
