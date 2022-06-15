@@ -1,6 +1,4 @@
 import Lake
-
 open Lake DSL
-
-package Qq where
-  defaultFacet := PackageFacet.oleans
+package Qq
+@[defaultTarget] lean_lib Qq
