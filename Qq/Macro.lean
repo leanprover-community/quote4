@@ -357,9 +357,17 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
         throwError "unsupported implicit auto-bound: {n} is not a level name"
       throw e
 
+    let refdLevels ← do
+      let mut s : CollectLevelParams.State := {}
+      for mvar in mvars do
+        if let some exprMVar := exprMVarSubst.find? mvar then
+          s := s.collect (← instantiateMVars exprMVar)
+      pure s.params
+
     for newLevelName in (← getLevelNames) do
-      if let some _ ← isLevelFVar newLevelName then
-        pure ()
+      if let some fvar ← isLevelFVar newLevelName then
+        if refdLevels.contains newLevelName then
+          addTermInfo' t fvar
       else if (← read).autoBoundImplicit then
         throwAutoBoundImplicitLocal newLevelName
       else
@@ -369,9 +377,6 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
     let some synth := mvarSynth.find? mvar | pure ()
     let mvar := mkMVar mvar
     let (true) ← isDefEq mvar (← synth s) | throwError "cannot assign metavariable {mvar}"
-
-  for refdFVar in (collectFVars {} (← instantiateMVars (mkMVar mvars.back))).fvarSet do
-    addTermInfo' t (mkFVar refdFVar)
 
   instantiateMVars (mkMVar mvars.back)
 

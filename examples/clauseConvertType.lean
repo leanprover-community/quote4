@@ -11,7 +11,7 @@ def orLevel : (ps : List ((u : Level) × Q(Type u))) → Level
 
 def or1 : (ps : List ((u : Level) × Q(Type u))) → Q(Type $(orLevel ps))
   | [] => q(Empty)
-  | [⟨u, p⟩] => q($p)
+  | [⟨_, p⟩] => q($p)
   | ⟨u, p⟩::ps => q(Sum $p $(or1 ps))
 
 def or2 : (ps : List ((u : Level) × Q(Type u))) → Q(Type $(orLevel ps))
@@ -20,8 +20,8 @@ def or2 : (ps : List ((u : Level) × Q(Type u))) → Q(Type $(orLevel ps))
 
 def orChange : (ps : List ((u : Level) × Q(Type u))) → Q($(or1 ps) → $(or2 ps))
   | [] => q(id)
-  | [⟨u, p⟩] => q(Sum.inl)
-  | ⟨u, p⟩::(ps1::ps2) =>
+  | [⟨_, _⟩] => q(Sum.inl)
+  | ⟨_, _⟩::(ps1::ps2) =>
     let h := orChange (ps1::ps2)
     q(fun h => match h with
       | Sum.inl l => Sum.inl l
