@@ -358,7 +358,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
       throw e
 
     for newLevelName in (← getLevelNames) do
-      if s.levelNames.contains newLevelName || (← isLevelFVar newLevelName).isSome then
+      if let some _ ← isLevelFVar newLevelName then
         pure ()
       else if (← read).autoBoundImplicit then
         throwAutoBoundImplicitLocal newLevelName
@@ -369,6 +369,9 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
     let some synth := mvarSynth.find? mvar | pure ()
     let mvar := mkMVar mvar
     let (true) ← isDefEq mvar (← synth s) | throwError "cannot assign metavariable {mvar}"
+
+  for refdFVar in (collectFVars {} (← instantiateMVars (mkMVar mvars.back))).fvarSet do
+    addTermInfo' t (mkFVar refdFVar)
 
   instantiateMVars (mkMVar mvars.back)
 
