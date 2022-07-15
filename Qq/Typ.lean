@@ -14,7 +14,7 @@ instance : ToString (QQ α) := inferInstanceAs (ToString Expr)
 
 instance : Coe (QQ α) Expr where coe e := e
 
-protected constant QQ.qq' {α : Expr} (t : Expr) : QQ α := t
+protected opaque QQ.qq' {α : Expr} (t : Expr) : QQ α := t
 
 protected abbrev QQ.ty (t : QQ α) : Expr := α
 

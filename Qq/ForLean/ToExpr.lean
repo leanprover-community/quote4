@@ -5,8 +5,8 @@ open Lean
 instance : ToExpr Int where
   toTypeExpr := mkConst ``Int
   toExpr i := match i with
-    | Int.ofNat n => mkApp (mkConst ``Int.ofNat) (toExpr n)
-    | Int.negSucc n => mkApp (mkConst ``Int.negSucc) (toExpr n)
+    | .ofNat n => mkApp (mkConst ``Int.ofNat) (toExpr n)
+    | .negSucc n => mkApp (mkConst ``Int.negSucc) (toExpr n)
 
 instance : ToExpr MVarId where
   toTypeExpr := mkConst ``MVarId
@@ -18,29 +18,29 @@ instance : ToExpr FVarId where
 
 open Level in
 private def toExprLevel : Level → Expr
-  | zero _       => mkConst ``levelZero
-  | succ l _     => mkApp (mkConst ``mkLevelSucc) (toExprLevel l)
-  | Level.max l₁ l₂ _ => mkApp2 (mkConst ``mkLevelMax) (toExprLevel l₁) (toExprLevel l₂)
-  | imax l₁ l₂ _ => mkApp2 (mkConst ``mkLevelIMax) (toExprLevel l₁) (toExprLevel l₂)
-  | param n _    => mkApp (mkConst ``mkLevelParam) (toExpr n)
-  | mvar n _     => mkApp (mkConst ``mkLevelMVar) (toExpr n)
+  | zero       => mkConst ``zero
+  | succ l     => mkApp (mkConst ``succ) (toExprLevel l)
+  | .max l₁ l₂ => mkApp2 (mkConst ``Level.max) (toExprLevel l₁) (toExprLevel l₂)
+  | imax l₁ l₂ => mkApp2 (mkConst ``imax) (toExprLevel l₁) (toExprLevel l₂)
+  | param n    => mkApp (mkConst ``param) (toExpr n)
+  | mvar n     => mkApp (mkConst ``mvar) (toExpr n)
 
 instance : ToExpr Level := ⟨toExprLevel, mkConst ``Level⟩
 
 instance : ToExpr Literal where
   toTypeExpr := mkConst ``Literal
   toExpr lit := match lit with
-    | Literal.natVal n => mkApp (mkConst ``Literal.natVal) (toExpr n)
-    | Literal.strVal s => mkApp (mkConst ``Literal.strVal) (toExpr s)
+    | .natVal n => mkApp (mkConst ``Literal.natVal) (toExpr n)
+    | .strVal s => mkApp (mkConst ``Literal.strVal) (toExpr s)
 
 instance : ToExpr BinderInfo where
   toTypeExpr := mkConst ``BinderInfo
   toExpr bi := match bi with
-    | BinderInfo.default => mkConst ``BinderInfo.default
-    | BinderInfo.implicit => mkConst ``BinderInfo.implicit
-    | BinderInfo.strictImplicit => mkConst ``BinderInfo.strictImplicit
-    | BinderInfo.instImplicit => mkConst ``BinderInfo.instImplicit
-    | BinderInfo.auxDecl => mkConst ``BinderInfo.auxDecl
+    | .default => mkConst ``BinderInfo.default
+    | .implicit => mkConst ``BinderInfo.implicit
+    | .strictImplicit => mkConst ``BinderInfo.strictImplicit
+    | .instImplicit => mkConst ``BinderInfo.instImplicit
+    | .auxDecl => mkConst ``BinderInfo.auxDecl
 
 instance : ToExpr MData where
   toTypeExpr := mkConst ``MData
@@ -59,21 +59,17 @@ instance : ToExpr MData where
 
 open Expr Literal in
 private def toExprExpr : Expr → Expr
-  | bvar n _        => mkApp (mkConst ``mkBVar) (mkNatLit n)
-  | fvar n _        => mkApp (mkConst ``mkFVar) (toExpr n)
-  | mvar n _        => mkApp (mkConst ``mkMVar) (toExpr n)
-  | sort l _        => mkApp (mkConst ``mkSort) (toExpr l)
-  | const n ls _    => mkApp2 (mkConst ``mkConst) (toExpr n) (toExpr ls)
-  | app f x _       => mkApp2 (mkConst ``mkApp) (toExprExpr f) (toExprExpr x)
-  | lam x d b c     => mkApp4 (mkConst ``mkLambda)
-    (toExpr x) (toExpr c.binderInfo) (toExprExpr d) (toExprExpr b)
-  | forallE x d b c => mkApp4 (mkConst ``mkForall)
-    (toExpr x) (toExpr c.binderInfo) (toExprExpr d) (toExprExpr b)
-  | letE x t v b c  => mkApp5 (mkConst ``mkLet)
-    (toExpr x) (toExprExpr t) (toExprExpr v) (toExprExpr b) (toExpr c.nonDepLet)
-  | lit (natVal n) _ => mkApp (mkConst ``mkNatLit) (mkNatLit n)
-  | lit (strVal s) _ => mkApp (mkConst ``mkStrLit) (mkStrLit s)
-  | mdata md e _    => mkApp2 (mkConst ``mkMData) (toExpr md) (toExprExpr e)
-  | proj s i e _    => mkApp3 (mkConst ``mkProj) (toExpr s) (mkNatLit i) (toExprExpr e)
+  | bvar n        => mkApp (mkConst ``bvar) (mkNatLit n)
+  | fvar n        => mkApp (mkConst ``fvar) (toExpr n)
+  | mvar n        => mkApp (mkConst ``mvar) (toExpr n)
+  | sort l        => mkApp (mkConst ``sort) (toExpr l)
+  | const n ls    => mkApp2 (mkConst ``const) (toExpr n) (toExpr ls)
+  | app f x       => mkApp2 (mkConst ``app) (toExprExpr f) (toExprExpr x)
+  | lam x d b c     => mkApp4 (mkConst ``lam) (toExpr x) (toExprExpr d) (toExprExpr b) (toExpr c)
+  | forallE x d b c => mkApp4 (mkConst ``forallE) (toExpr x) (toExprExpr d) (toExprExpr b) (toExpr c)
+  | letE x t v b c  => mkApp5 (mkConst ``letE) (toExpr x) (toExprExpr t) (toExprExpr v) (toExprExpr b) (toExpr c)
+  | lit l         => mkApp (mkConst ``lit) (toExpr l)
+  | mdata md e    => mkApp2 (mkConst ``mdata) (toExpr md) (toExprExpr e)
+  | proj s i e    => mkApp3 (mkConst ``proj) (toExpr s) (mkNatLit i) (toExprExpr e)
 
 instance : ToExpr Expr := ⟨toExprExpr, mkConst ``Expr⟩

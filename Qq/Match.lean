@@ -142,12 +142,12 @@ def mkNAryFunctionType : Nat → MetaM Expr
   | n+1 => do withLocalDeclD `x (← mkFreshTypeMVar) fun x => do
     mkForallFVars #[x] (← mkNAryFunctionType n)
 
-partial def getPatVars (pat : Syntax) : StateT (Array (Name × Nat × Expr)) TermElabM Syntax := do
+partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr)) TermElabM Term := do
   match pat with
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
     | _ => if isPatVar pat then return ← mkMVar pat #[]
   match pat with
-    | Syntax.node info kind args => return Syntax.node info kind (← args.mapM getPatVars)
+    | ⟨.node info kind args⟩ => return ⟨.node info kind (← args.mapM (getPatVars ⟨·⟩))⟩
     | pat => return pat
 
   where
@@ -156,14 +156,14 @@ partial def getPatVars (pat : Syntax) : StateT (Array (Name × Nat × Expr)) Ter
       fn.isAntiquot && !fn.isEscapedAntiquot && fn.getAntiquotTerm.isIdent &&
       fn.getAntiquotTerm.getId.isAtomic
 
-    mkMVar (fn : Syntax) (args : Array Syntax) : StateT _ TermElabM Syntax := do
+    mkMVar (fn : Syntax) (args : Array Term) : StateT _ TermElabM Term := do
       let args ← args.mapM getPatVars
       withFreshMacroScope do
-        let mvar ← elabTerm (← `(?m)).stripPos (← mkNAryFunctionType args.size)
+        let mvar ← elabTerm (← `(?m)).1.stripPos (← mkNAryFunctionType args.size)
         modify fun s => s.push (fn.getAntiquotTerm.getId, args.size, mvar)
         `(?m $args*)
 
-def elabPat (pat : Syntax) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
+def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
     (levelNames : List Name) : TermElabM (Expr × Array LocalDecl × Array Name) :=
   withLCtx lctx localInsts do
     withLevelNames levelNames do
@@ -226,7 +226,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
     s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr ldecl.toExpr }
 
   let m : Q(Type → Type) := QQ.qq' emr.m
-  let γ : Q(Type) := QQ.qq' emr.α
+  let γ : Q(Type) := QQ.qq' emr.returnType
   let inst ← synthInstanceQ q(Bind $m)
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
@@ -238,17 +238,17 @@ scoped syntax "_qq_match" term " ← " term " | " doElem : term
 macro_rules
   | `(assert! (_qq_match $pat ← $e | $alt); $x) => `(_qq_match $pat ← $e | (do $alt:doElem); $x)
 
-partial def isIrrefutablePattern : Syntax → Bool
+partial def isIrrefutablePattern : Term → Bool
   | `(($stx)) => isIrrefutablePattern stx
   | `(⟨$args,*⟩) => args.getElems.all isIrrefutablePattern
   | `(($a, $b)) => isIrrefutablePattern a && isIrrefutablePattern b
   | `(_) => true
   | `(true) => false | `(false) => false -- TODO properly
-  | stx => stx.isIdent
+  | stx => stx.1.isIdent
 
 scoped elab "_comefrom" n:ident "do" b:doElem ";" body:term : term <= expectedType => do
   let _ ← extractBind expectedType
-  assignExprMVar (← elabTerm (← `(?m)).stripPos none).mvarId! expectedType
+  assignExprMVar (← elabTerm (← `(?m)).1.stripPos none).mvarId! expectedType
   elabTerm (← `(have $n:ident : ?m := (do $b:doElem); $body)) expectedType
 
 scoped syntax "_comefrom" ident "do" doElem : term
@@ -257,7 +257,7 @@ macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b; $b
 scoped macro "comefrom" n:ident "do" b:doElem : doElem =>
   `(doElem| assert! (_comefrom $n do $b))
 
-def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat rhs alt : Syntax) : m (List Syntax) := do
+def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat : Term) (rhs alt : TSyntax `doElem) : m (List (TSyntax ``doSeqItem)) := do
   match pat with
     | `(_) => return []
     | _ =>
@@ -278,60 +278,60 @@ partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($_)) => true
   | stx => stx.getArgs.any hasQMatch
 
-partial def Impl.floatQMatch (alt : Syntax) : Syntax → StateT (List Syntax) MacroM Syntax
+partial def Impl.floatQMatch (alt : TSyntax `doElem) : Term → StateT (List (TSyntax ``doSeqItem)) MacroM Term
   | `(~q($term)) =>
     withFreshMacroScope do
       let auxDoElem ← `(doSeqItem| let ~q($term) ← x | $alt)
       modify fun s => s ++ [auxDoElem]
       `(x)
   | stx => do match stx with
-    | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatQMatch alt))
+    | ⟨.node i k args⟩ => return ⟨.node i k (← args.mapM (floatQMatch alt ⟨·⟩))⟩
     | stx => return stx
 
-private def push (i : Syntax) : StateT (Array Syntax) MacroM Unit :=
+private def push (i : TSyntax ``doSeqItem) : StateT (Array (TSyntax ``doSeqItem)) MacroM Unit :=
   modify fun s => s.push i
 
 partial def unpackParensIdent : Syntax → Option Syntax
   | `(($stx)) => unpackParensIdent stx
   | stx => if stx.isIdent then some stx else none
 
-private partial def floatLevelAntiquot (stx : Syntax) : StateT (Array Syntax) MacroM Syntax :=
-  if stx.isAntiquot && !stx.isEscapedAntiquot then
-    if !stx.getAntiquotTerm.isIdent then
+private partial def floatLevelAntiquot (stx : Syntax.Level) : StateT (Array (TSyntax ``doSeqItem)) MacroM Syntax.Level :=
+  if stx.1.isAntiquot && !stx.1.isEscapedAntiquot then
+    if !stx.1.getAntiquotTerm.isIdent then
       withFreshMacroScope do
-        push <|<- `(doSeqItem| let u : Level := $(stx.getAntiquotTerm))
-        `(u)
+        push <|<- `(doSeqItem| let u : Level := $(⟨stx.1.getAntiquotTerm⟩))
+        `(level| u)
     else
       pure stx
   else
     match stx with
-    | Syntax.node i k args => return Syntax.node i k (← args.mapM floatLevelAntiquot)
+    | ⟨.node i k args⟩ => return ⟨Syntax.node i k (← args.mapM (floatLevelAntiquot ⟨·⟩))⟩
     | stx => return stx
 
-private partial def floatExprAntiquot (depth : Nat) : Syntax → StateT (Array Syntax) MacroM Syntax
+private partial def floatExprAntiquot (depth : Nat) : Term → StateT (Array (TSyntax ``doSeqItem)) MacroM Term
   | `(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
   | `(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
   | stx => do
-    if stx.isAntiquot && !stx.isEscapedAntiquot then
-      let term := stx.getAntiquotTerm
-      if term.isIdent then
+    if stx.1.isAntiquot && !stx.1.isEscapedAntiquot then
+      let term : Term := ⟨stx.1.getAntiquotTerm⟩
+      if term.1.isIdent then
         return stx
       else if depth > 0 then
-        return Syntax.mkAntiquotNode (← floatExprAntiquot (depth - 1) term)
+        return ⟨.mkAntiquotNode stx.1.antiquotKind?.get!.1 (← floatExprAntiquot (depth - 1) term)⟩
       else
-        match unpackParensIdent stx.getAntiquotTerm with
+        match unpackParensIdent stx.1.getAntiquotTerm with
           | some id =>
             if id.getId.isAtomic then
-              return (addSyntaxDollar id)
+              return ⟨addSyntaxDollar id⟩
           | none => pure ()
         withFreshMacroScope do
           push <|<- `(doSeqItem| let a : QQ _ := $term)
-          addSyntaxDollar <$> `(a)
+          return ⟨addSyntaxDollar (← `(a))⟩
     else
       match stx with
-      | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatExprAntiquot depth))
+      | ⟨.node i k args⟩ => return ⟨.node i k (← args.mapM (floatExprAntiquot depth ⟨·⟩))⟩
       | stx => return stx
 
 macro_rules
@@ -364,18 +364,18 @@ macro_rules
         `(doElem| do $items:doSeqItem*)
 
   | `(match $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
-    if !patss.any (·.any hasQMatch) then Macro.throwUnsupported
+    if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
     `(do match $[$discrs:term],* with $[| $[$patss:term],* => $rhss:term]*)
 
   | `(doElem| match $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
-    if !patss.any (·.any hasQMatch) then Macro.throwUnsupported
+    if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
     let discrs ← discrs.mapM fun d => withFreshMacroScope do
       pure (← `(x), ← `(doSeqItem| let x := $d:term))
     let mut items := discrs.map (·.2)
     let discrs := discrs.map (·.1)
     items := items.push (← `(doSeqItem| comefrom alt do throwError "nonexhaustive match"))
     for pats in patss.reverse, rhs in rhss.reverse do
-      let mut subItems : Array Syntax := #[]
+      let mut subItems : Array (TSyntax ``doSeqItem) := #[]
       for discr in discrs, pat in pats do
         subItems := subItems ++ (← mkLetDoSeqItem pat (← `(doElem| pure $discr:term)) (← `(doElem| alt)))
       subItems := subItems.push (← `(doSeqItem| do $rhs))

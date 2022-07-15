@@ -23,15 +23,15 @@ abbrev M := ReaderT Context $ StateRefT State MetaM
 mutual
   partial def visitExpr (e : Expr) : M Unit := do
     match e with
-    | Expr.proj _ _ e _    => visitExpr e
-    | Expr.forallE _ d b _ => visitExpr d; visitExpr b
-    | Expr.lam _ d b _     => visitExpr d; visitExpr b
-    | Expr.letE _ t v b _  => visitExpr t; visitExpr v; visitExpr b
-    | Expr.app f a _       => visitExpr f; visitExpr a
-    | Expr.mdata _ b _     => visitExpr b
-    | Expr.mvar _ _        => let v ← instantiateMVars e; unless v.isMVar do visitExpr v
-    | Expr.fvar fvarId _   => if let some localDecl := (← read).localDecls.find? fvarId.name then visitLocalDecl localDecl
-    | _                    => return ()
+    | .proj _ _ e    => visitExpr e
+    | .forallE _ d b _ => visitExpr d; visitExpr b
+    | .lam _ d b _     => visitExpr d; visitExpr b
+    | .letE _ t v b _  => visitExpr t; visitExpr v; visitExpr b
+    | .app f a       => visitExpr f; visitExpr a
+    | .mdata _ b     => visitExpr b
+    | .mvar _        => let v ← instantiateMVars e; unless v.isMVar do visitExpr v
+    | .fvar fvarId   => if let some localDecl := (← read).localDecls.find? fvarId.name then visitLocalDecl localDecl
+    | _              => return ()
 
   partial def visitLocalDecl (localDecl : LocalDecl) : M Unit := do
     unless (← get).visited.contains localDecl.fvarId.name do

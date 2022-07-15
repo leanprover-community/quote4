@@ -8,18 +8,6 @@ namespace Qq
 
 namespace Impl
 
-def evalBinderInfoData (e : Expr) : MetaM BinderInfo :=
-  if e.isAppOfArity ``Expr.mkDataForBinder 8 then
-    reduceEval (e.getArg! 7)
-  else
-    throwFailedToEval e
-
-def evalNonDepData (e : Expr) : MetaM Bool :=
-  if e.isAppOfArity ``Expr.mkDataForLet 8 then
-    reduceEval (e.getArg! 7)
-  else
-    throwFailedToEval e
-
 structure UnquoteState where
   -- maps quoted expressions (of type Level) in the old context to level parameter names in the new context
   levelSubst : HashMap Expr Level := {}
@@ -42,40 +30,40 @@ abbrev UnquoteM := StateT UnquoteState MetaM
 
 open Name in
 def addDollar : Name → Name
-  | anonymous => mkStr anonymous "$"
-  | str anonymous s _ => mkStr anonymous ("$" ++ s)
-  | str n s _ => mkStr (addDollar n) s
-  | num n i _ => mkNum (addDollar n) i
+  | anonymous => str anonymous "$"
+  | str anonymous s => str anonymous ("$" ++ s)
+  | str n s => str (addDollar n) s
+  | num n i => num (addDollar n) i
 
 open Name in
 def removeDollar : Name → Option Name
   | anonymous => none
-  | str anonymous "$" _ => some anonymous
-  | str anonymous s _ =>
-    if s.startsWith "$" then mkStr anonymous (s.drop 1) else none
-  | str n s _ => (removeDollar n).map (mkStr . s)
-  | num n i _ => (removeDollar n).map (mkNum . i)
+  | str anonymous "$" => some anonymous
+  | str anonymous s =>
+    if s.startsWith "$" then str anonymous (s.drop 1) else none
+  | str n s => (removeDollar n).map (str . s)
+  | num n i => (removeDollar n).map (num . i)
 
 open Name in
 def stripDollars : Name → Name
   | anonymous => anonymous
-  | str n "$" _ => stripDollars n
-  | str anonymous s _ =>
+  | str n "$" => stripDollars n
+  | str anonymous s =>
     let s := s.dropWhile (· = '$')
-    if s = "" then anonymous else mkStr anonymous s
-  | str n s _ => mkStr (stripDollars n) s
-  | num n i _ => mkNum (stripDollars n) i
+    if s = "" then anonymous else str anonymous s
+  | str n s => str (stripDollars n) s
+  | num n i => num (stripDollars n) i
 
 def addSyntaxDollar : Syntax → Syntax
-  | Syntax.ident info rawVal            val  preresolved =>
-    Syntax.ident info rawVal (addDollar val) preresolved
+  | .ident info rawVal            val  preresolved =>
+    .ident info rawVal (addDollar val) preresolved
   | stx => panic! s!"addSyntaxDollar {stx}"
 
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   return e.getAppFn.constName?.getD `udummy ++ (← mkFreshId)
 
 def isBad (e : Expr) : Bool := Id.run do
-  if let Expr.const (Name.str _ "rec" _) _ _ := e.getAppFn then
+  if let .const (.str _ "rec") _ := e.getAppFn then
     return true
   return false
 
@@ -91,12 +79,12 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   let e ← whnf e
   if let some l := (← get).levelSubst.find? e then
     return l
-  if e.isAppOfArity ``Level.zero 1 then pure levelZero
-  else if e.isAppOfArity ``Level.succ 2 then return mkLevelSucc (← unquoteLevel (e.getArg! 0))
-  else if e.isAppOfArity ``Level.max 3 then return mkLevelMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
-  else if e.isAppOfArity ``Level.imax 3 then return mkLevelIMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
-  else if e.isAppOfArity ``Level.param 2 then return mkLevelParam (← reduceEval (e.getArg! 0))
-  else if e.isAppOfArity ``Level.mvar 2 then return mkLevelMVar (← reduceEval (e.getArg! 0))
+  if e.isAppOfArity ``Level.zero 0 then pure levelZero
+  else if e.isAppOfArity ``Level.succ 1 then return mkLevelSucc (← unquoteLevel (e.getArg! 0))
+  else if e.isAppOfArity ``Level.max 2 then return mkLevelMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
+  else if e.isAppOfArity ``Level.imax 2 then return mkLevelIMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
+  else if e.isAppOfArity ``Level.param 1 then return mkLevelParam (← reduceEval (e.getArg! 0))
+  else if e.isAppOfArity ``Level.mvar 1 then return mkLevelMVar (← reduceEval (e.getArg! 0))
   else
     let name ← mkAbstractedLevelName e
     let l := mkLevelParam name
@@ -118,7 +106,7 @@ partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
 def mkAbstractedName (e : Expr) : MetaM Name :=
   return e.getAppFn.constName?.getD `dummy
 
-@[inline] constant betaRev' (e : Expr) (revArgs : List Expr) : Expr :=
+@[inline] opaque betaRev' (e : Expr) (revArgs : List Expr) : Expr :=
   e.betaRev revArgs.toArray
 
 mutual
@@ -150,30 +138,32 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     }
     return fv
   let e ← whnf e
-  let Expr.const c _ _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
+  let .const c _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
   let nargs := e.getAppNumArgs
   match c, nargs with
     | ``betaRev', 2 => return betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
-    | ``Expr.bvar, 2 => return mkBVar (← reduceEval (e.getArg! 0))
+    | ``Expr.bvar, 1 => return .bvar (← reduceEval (e.getArg! 0))
     /- | ``Expr.fvar, 2 => mkFVar (← reduceEval (e.getArg! 0)) -/
     /- | ``Expr.mvar, 2 => mkMVar (← reduceEval (e.getArg! 0)) -/
-    | ``Expr.sort, 2 => return mkSort (← unquoteLevel (e.getArg! 0))
-    | ``Expr.const, 3 => return mkConst (← reduceEval (e.getArg! 0)) (← unquoteLevelList (e.getArg! 1))
-    | ``Expr.app, 3 => return mkApp (← unquoteExpr (e.getArg! 0)) (← unquoteExpr (e.getArg! 1))
+    | ``Expr.sort, 1 => return .sort (← unquoteLevel (e.getArg! 0))
+    | ``Expr.const, 2 => return .const (← reduceEval (e.getArg! 0)) (← unquoteLevelList (e.getArg! 1))
+    | ``Expr.app, 2 => return .app (← unquoteExpr (e.getArg! 0)) (← unquoteExpr (e.getArg! 1))
     | ``Expr.lam, 4 =>
-      return mkLambda (← reduceEval (e.getArg! 0)) (← evalBinderInfoData (e.getArg! 3))
+      return .lam (← reduceEval (e.getArg! 0))
         (← unquoteExpr (e.getArg! 1))
         (← unquoteExpr (e.getArg! 2))
+        (← reduceEval (e.getArg! 3))
     | ``Expr.forallE, 4 =>
-      return mkForall (← reduceEval (e.getArg! 0)) (← evalBinderInfoData (e.getArg! 3))
+      return .forallE (← reduceEval (e.getArg! 0))
         (← unquoteExpr (e.getArg! 1))
         (← unquoteExpr (e.getArg! 2))
+        (← reduceEval (e.getArg! 3))
     | ``Expr.letE, 5 =>
-      return mkLet (← reduceEval (e.getArg! 0)) (← unquoteExpr (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
-        (← unquoteExpr (e.getArg! 3)) (← evalNonDepData (e.getArg! 4))
-    | ``Expr.lit, 2 => return mkLit (← reduceEval (e.getArg! 0))
-    | ``Expr.proj, 4 =>
-      return mkProj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
+      return .letE (← reduceEval (e.getArg! 0)) (← unquoteExpr (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
+        (← unquoteExpr (e.getArg! 3)) (← reduceEval (e.getArg! 4))
+    | ``Expr.lit, 1 => return .lit (← reduceEval (e.getArg! 0))
+    | ``Expr.proj, 3 =>
+      return .proj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
     | _, _ => throwError "unquoteExpr: {e} : {eTy}"
 
 end
@@ -198,7 +188,7 @@ def unquoteLCtx : UnquoteM Unit := do
         levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
       }
     else
-      let Level.succ u _ ← getLevel ty | pure ()
+      let .succ u ← getLevel ty | pure ()
       let LOption.some inst ← trySynthInstance (mkApp (mkConst ``ToExpr [u]) ty) | pure ()
       modify fun s => { s with
         unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
@@ -226,12 +216,12 @@ def isLevelFVar (n : Name) : MetaM (Option Expr) := do
 abbrev QuoteM := ReaderT UnquoteState MetaM
 
 def quoteLevel : Level → QuoteM Expr
-  | Level.zero _ => return mkConst ``levelZero
-  | Level.succ u _ => return mkApp (mkConst ``mkLevelSucc) (← quoteLevel u)
+  | .zero => return mkConst ``Level.zero
+  | .succ u => return mkApp (mkConst ``Level.succ) (← quoteLevel u)
   | l@(Level.mvar ..) => throwError "level mvars not supported {l}"
-  | Level.max a b _ => return mkApp2 (mkConst ``mkLevelMax) (← quoteLevel a) (← quoteLevel b)
-  | Level.imax a b _ => return mkApp2 (mkConst ``mkLevelIMax) (← quoteLevel a) (← quoteLevel b)
-  | l@(Level.param n _) => do
+  | .max a b => return mkApp2 (mkConst ``Level.max) (← quoteLevel a) (← quoteLevel b)
+  | .imax a b => return mkApp2 (mkConst ``Level.imax) (← quoteLevel a) (← quoteLevel b)
+  | l@(.param n) => do
     match (← read).levelBackSubst.find? l with
       | some e => return e
       | none =>
@@ -247,14 +237,14 @@ def quoteLevelList : List Level → QuoteM Expr
       (← quoteLevel l) (← quoteLevelList ls)
 
 partial def quoteExpr : Expr → QuoteM Expr
-  | Expr.bvar i _ => return mkApp (mkConst ``mkBVar) (toExpr i)
-  | e@(Expr.fvar ..) => do
+  | .bvar i => return mkApp (mkConst ``Expr.bvar) (toExpr i)
+  | e@(.fvar ..) => do
     let some r := (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
     return r
-  | e@(Expr.mvar ..) => throwError "resulting term contains metavariable {e}"
-  | Expr.sort u _ => return mkApp (mkConst ``mkSort) (← quoteLevel u)
-  | Expr.const n ls _ => return mkApp2 (mkConst ``mkConst) (toExpr n) (← quoteLevelList ls)
-  | e@(Expr.app _ _ _) => do
+  | e@(.mvar ..) => throwError "resulting term contains metavariable {e}"
+  | .sort u => return mkApp (mkConst ``Expr.sort) (← quoteLevel u)
+  | .const n ls => return mkApp2 (mkConst ``Expr.const) (toExpr n) (← quoteLevelList ls)
+  | e@(.app _ _) => do
     let fn ← quoteExpr e.getAppFn
     let args ← e.getAppArgs.mapM quoteExpr
     if e.getAppFn.isFVar then -- TODO make configurable
@@ -262,18 +252,18 @@ partial def quoteExpr : Expr → QuoteM Expr
         args.foldl (flip $ mkApp3 (mkConst ``List.cons [levelZero]) (mkConst ``Expr))
           (mkApp (mkConst ``List.nil [levelZero]) (mkConst ``Expr))
     else
-      pure $ args.foldl (mkApp2 (mkConst ``mkApp)) fn
-  | Expr.lam n t b d => do
-    return mkApp4 (mkConst ``mkLambda) (toExpr n.eraseMacroScopes)
-      (toExpr d.binderInfo) (← quoteExpr t) (← quoteExpr b)
-  | Expr.forallE n t b d => do
-    return mkApp4 (mkConst ``mkForall) (toExpr $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
-      (toExpr d.binderInfo) (← quoteExpr t) (← quoteExpr b)
-  | Expr.letE n t v b d => do
-    return mkApp5 (mkConst ``mkLet) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d.nonDepLet)
-  | Expr.lit l _ => return mkApp (mkConst ``mkLit) (toExpr l)
-  | Expr.proj n i e _ => return mkApp3 (mkConst ``mkProj) (toExpr n) (toExpr i) (← quoteExpr e)
-  | Expr.mdata _ e _ => quoteExpr e
+      pure $ args.foldl (mkApp2 (mkConst ``Expr.app)) fn
+  | .lam n t b d => do
+    return mkApp4 (mkConst ``Expr.lam) (toExpr n.eraseMacroScopes)
+      (← quoteExpr t) (← quoteExpr b) (toExpr d)
+  | .forallE n t b d => do
+    return mkApp4 (mkConst ``Expr.forallE) (toExpr $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
+      (← quoteExpr t) (← quoteExpr b) (toExpr d)
+  | .letE n t v b d => do
+    return mkApp5 (mkConst ``Expr.letE) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d)
+  | .lit l => return mkApp (mkConst ``Expr.lit) (toExpr l)
+  | .proj n i e => return mkApp3 (mkConst ``Expr.proj) (toExpr n) (toExpr i) (← quoteExpr e)
+  | .mdata _ e => quoteExpr e
 
 def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashMap MVarId (QuoteM Expr)) := do
   let mut exprMVarSubst : HashMap MVarId Expr := HashMap.empty
@@ -408,28 +398,29 @@ support `Q($(foo) ∨ False)`
 private def push [Monad m] (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) m Unit :=
   modify fun s => s.push (i, t, l)
 
-partial def floatLevelAntiquot [Monad m] [MonadQuotation m] (stx : Syntax) :
+partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax) :
     StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
   if stx.isAntiquot && !stx.isEscapedAntiquot then
     withFreshMacroScope do
-      push (← `(u)) (← `(Level)) (← floatLevelAntiquot stx.getAntiquotTerm)
+      push (← `(u)) (← `(Level)) (← floatLevelAntiquot' stx.getAntiquotTerm)
       `(u)
   else
     match stx with
-    | Syntax.node i k args => return Syntax.node i k (← args.mapM floatLevelAntiquot)
+    | Syntax.node i k args => return Syntax.node i k (← args.mapM floatLevelAntiquot')
     | stx => return stx
 
-partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
+open TSyntax.Compat in
+partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
-  | `(Q($x)) => do `(Q($(← floatExprAntiquot (depth + 1) x)))
-  | `(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
-  | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
-  | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
+  | `(Q($x)) => do `(Q($(← floatExprAntiquot' (depth + 1) x)))
+  | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
+  | `(Type $term) => do `(Type $(← floatLevelAntiquot' term))
+  | `(Sort $term) => do `(Sort $(← floatLevelAntiquot' term))
   | stx => do
-    if stx.isAntiquot && !stx.isEscapedAntiquot then
+    if let (some (kind, _pseudo), false) := (stx.antiquotKind?, stx.isEscapedAntiquot) then
       let term := stx.getAntiquotTerm
       if depth > 0 then
-        return Syntax.mkAntiquotNode (← floatExprAntiquot (depth - 1) term)
+        return Syntax.mkAntiquotNode kind (← floatExprAntiquot' (depth - 1) term)
       else if term.isIdent && (stripDollars term.getId).isAtomic then
         return addSyntaxDollar term
       else
@@ -438,8 +429,15 @@ partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
           return addSyntaxDollar <|<- `(a)
     else
       match stx with
-      | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatExprAntiquot depth))
+      | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatExprAntiquot' depth))
       | stx => pure stx
+
+open TSyntax.Compat in
+partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
+    Term → StateT (Array $ Ident × Term × Term) m Term :=
+  fun t s => do
+    let (t, lifts) ← floatExprAntiquot' depth t (s.map fun (a,t,l) => (a,t,l))
+    return (t, lifts.map fun (a,t,l) => (a,t,l))
 
 macro_rules
   | `(Q($t0)) => do

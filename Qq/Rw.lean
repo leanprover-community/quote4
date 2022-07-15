@@ -10,22 +10,22 @@ partial def recurse (f : Expr → MetaM (Option Expr)) (e : Expr) : MetaM Expr :
   if let some e' ← f e then
     return e'
   match e with
-  | Expr.app _ _ _ => return mkAppN e.getAppFn (← e.getAppArgs.mapM (recurse f))
+  | .app _ _ => return mkAppN e.getAppFn (← e.getAppArgs.mapM (recurse f))
   | Expr.lam n t e d =>
     let t ← recurse f t
-    withLocalDecl n d.binderInfo t fun x => do
+    withLocalDecl n d t fun x => do
       mkLambdaFVars #[x] <| ← recurse f (e.instantiate #[x])
-  | Expr.forallE n t e d =>
+  | .forallE n t e d =>
     let t ← recurse f t
-    withLocalDecl n d.binderInfo t fun x => do
+    withLocalDecl n d t fun x => do
       mkForallFVars #[x] <| ← recurse f (e.instantiate #[x])
-  | Expr.letE n t v e .. =>
+  | .letE n t v e .. =>
     let t ← recurse f t
     let v ← recurse f v
     withLetDecl n t v fun x => do
       mkLetFVars #[x] <| ← recurse f (e.instantiate #[x])
-  | Expr.mdata md e _ => return mkMData md (← recurse f e)
-  | Expr.proj n i e _ => return mkProj n i (← recurse f e)
+  | .mdata md e => return mkMData md (← recurse f e)
+  | .proj n i e => return mkProj n i (← recurse f e)
   | e => return e
 
 def qrwInside (a b : Expr) : Expr → MetaM Expr :=

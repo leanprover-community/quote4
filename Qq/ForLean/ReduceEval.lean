@@ -8,7 +8,7 @@ def throwFailedToEval (e : Expr) : MetaM α :=
 
 private partial def evalList [ReduceEval α] (e : Expr) : MetaM (List α) := do
   let e ← whnf e
-  let Expr.const c _ _ ← pure e.getAppFn | throwFailedToEval e
+  let .const c _ ← pure e.getAppFn | throwFailedToEval e
   let nargs := e.getAppNumArgs
   match c, nargs with
     | ``List.nil, 1 => pure []
@@ -29,7 +29,7 @@ instance : ReduceEval UInt64 where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``UInt64.mk 1 then
-      let inst : ReduceEval (Fin UInt64.size) := instReduceEvalFinHAddNatInstHAddInstAddNatOfNat
+      let _ : ReduceEval (Fin UInt64.size) := instReduceEvalFinHAddNatInstHAddInstAddNatOfNat
       pure ⟨(← reduceEval (e.getArg! 0))⟩
     else
       throwFailedToEval e
@@ -56,20 +56,20 @@ instance : ReduceEval Bool where
 instance : ReduceEval BinderInfo where
   reduceEval := fun e => do
     match (← whnf e).constName? with
-    | some ``BinderInfo.default => pure BinderInfo.default
-    | some ``BinderInfo.implicit => pure BinderInfo.implicit
-    | some ``BinderInfo.strictImplicit => pure BinderInfo.strictImplicit
-    | some ``BinderInfo.instImplicit => pure BinderInfo.instImplicit
-    | some ``BinderInfo.auxDecl => pure BinderInfo.auxDecl
+    | some ``BinderInfo.default => pure .default
+    | some ``BinderInfo.implicit => pure .implicit
+    | some ``BinderInfo.strictImplicit => pure .strictImplicit
+    | some ``BinderInfo.instImplicit => pure .instImplicit
+    | some ``BinderInfo.auxDecl => pure .auxDecl
     | _ => throwFailedToEval e
 
 instance : ReduceEval Literal where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``Literal.natVal 1 then
-      return Literal.natVal (← reduceEval (e.getArg! 0))
+      return .natVal (← reduceEval (e.getArg! 0))
     else if e.isAppOfArity ``Literal.strVal 1 then
-      return Literal.strVal (← reduceEval (e.getArg! 0))
+      return .strVal (← reduceEval (e.getArg! 0))
     else
       throwFailedToEval e
 
