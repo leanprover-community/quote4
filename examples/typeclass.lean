@@ -1,6 +1,7 @@
 import Qq
 open Qq
 
+set_option linter.unusedVariables false in
 def typeClassArgument (α : Q(Sort u)) (inst : Q(Inhabited $α)) : Q($α) :=
   q(Inhabited.default)
 

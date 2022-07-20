@@ -16,4 +16,4 @@ def instantiateLCtxMVars (lctx : LocalContext) : MetaM LocalContext := do
   let mut lctx' : LocalContext := {}
   for ldecl in lctx do
     lctx' := lctx'.addDecl (← instantiateLocalDeclMVars ldecl)
-  lctx'
+  return lctx'
