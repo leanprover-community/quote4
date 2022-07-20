@@ -156,4 +156,7 @@ def turnExistsIntoForall : Q(Prop) → MetaM Q(Prop)
   a + a defEq 0)
 ```
 
+- Matching on types should be possible, that is,
+  `match (e : Expr) with | ~q($p ∧ $q) => ...`.
+
 - Other bug fixes, documentation, and assorted polishing.
