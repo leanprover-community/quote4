@@ -23,8 +23,11 @@ private def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
   let newE ← unquoteExpr e
   return (newE, (← get).unquoted)
 
-def delabQuoted : Delab :=
-  whenPPOption (·.getBool `pp.qq) do
+def checkQqDelabOptions : DelabM Unit := do
+  unless ← getPPOption (·.getBool `pp.qq true) do failure
+  if ← getPPOption getPPExplicit then failure
+
+def delabQuoted : Delab := do
   let e ← getExpr
   let ((newE, newLCtx), _) ← failureOnError $ (unquote e).run {}
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
@@ -33,11 +36,13 @@ def delabQuoted : Delab :=
 @[delab app.Qq.QQ]
 def delabQ : Delab := do
   guard $ (← getExpr).getAppNumArgs == 1
+  checkQqDelabOptions
   let stx ← withAppArg delabQuoted
   `(Q($stx))
 
 @[delab app.Qq.QQ.qq]
 def delabq : Delab := do
   guard $ (← getExpr).getAppNumArgs == 2
+  checkQqDelabOptions
   let stx ← withAppArg delabQuoted
   `(q($stx))
