@@ -50,7 +50,7 @@ q($f $a)
 ```
 
 There are many things going on here:
-1. The `betterApp` function compiles to a single `mkApp` call.
+1. The `betterApp` function compiles to a single `betaRev` call.
 1. It does not require the `MetaM` monad (in contrast to
    `AppBuilder.lean` in the Lean 4 code).
 1. `Q(…)` is definitionally equal to `Expr`, so each variable
