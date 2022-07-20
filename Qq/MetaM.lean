@@ -26,3 +26,14 @@ def elabTermEnsuringTypeQ (stx : Syntax) (expectedType : Q(Sort u))
     (catchExPostpone := true) (implicitLambda := true) (errorMsgHeader? : Option String := none) :
     TermElabM Q($expectedType) := do
   elabTermEnsuringType stx expectedType catchExPostpone implicitLambda errorMsgHeader?
+
+def inferTypeQ (e : Expr) : MetaM ((u : Level) × (α : Q(Sort $u)) × Q($α)) := do
+  let α ← inferType e
+  let .sort u ← whnf (← inferType α) | throwError "not a type{indentExpr α}"
+  pure ⟨u, α, e⟩
+
+def checkTypeQ (e : Expr) (ty : Q(Sort $u)) : MetaM (Option Q($ty)) := do
+  if ← isDefEq (← inferType e) ty then
+    return some e
+  else
+    return none

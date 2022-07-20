@@ -15,6 +15,8 @@ instance : Inhabited (QQ α) := inferInstanceAs (Inhabited Expr)
 instance : ToString (QQ α) := inferInstanceAs (ToString Expr)
 
 instance : Coe (QQ α) Expr where coe e := e
+instance : Coe (QQ α) MessageData where coe := .ofExpr
+instance : ToMessageData (QQ α) where toMessageData := .ofExpr
 
 protected opaque QQ.qq' {α : Expr} (t : Expr) : QQ α := t
 
