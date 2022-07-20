@@ -14,18 +14,18 @@ The type former comes with the following
 natural introduction rule:
 
 ```
-$a₁ :   α₁,  …, $aₙ :   αₙ  ⊢   t  : Type
------------------------------------------
- a₁ : Q(α₁), …,  aₙ : Q(αₙ) ⊢ Q(t) : Type
+$a₁ :   α₁,   …,  $aₙ :   αₙ   ⊢    t  : Type
+---------------------------------------------
+ a₁ : Q(α₁),  …,   aₙ : Q(αₙ)  ⊢  Q(t) : Type
 ```
 
 The lower-case `q(·)` macro serves
 as the modal inference rule,
 allowing us to construct values in `Q(·)`:
 ```
-$a₁ :   α₁,  …, $aₙ :   αₙ  ⊢   t  :   β
------------------------------------------
- a₁ : Q(α₁), …,  aₙ : Q(αₙ) ⊢ q(t) : Q(β)
+$a₁ :   α₁,   …,  $aₙ :   αₙ   ⊢    t  :   β
+---------------------------------------------
+ a₁ : Q(α₁),  …,   aₙ : Q(αₙ)  ⊢  q(t) : Q(β)
 ```
 
 ## Example
