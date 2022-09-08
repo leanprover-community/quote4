@@ -81,6 +81,14 @@ instance : ReduceEval MVarId where
     else
       throwFailedToEval e
 
+instance : ReduceEval LevelMVarId where
+  reduceEval e := do
+    let e ← whnf e
+    if e.isAppOfArity ``LevelMVarId.mk 1 then
+      return ⟨← reduceEval (e.getArg! 0)⟩
+    else
+      throwFailedToEval e
+
 instance : ReduceEval FVarId where
   reduceEval e := do
     let e ← whnf e

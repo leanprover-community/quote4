@@ -12,6 +12,10 @@ instance : ToExpr MVarId where
   toTypeExpr := mkConst ``MVarId
   toExpr i := mkApp (mkConst ``MVarId.mk) (toExpr i.name)
 
+instance : ToExpr LevelMVarId where
+  toTypeExpr := mkConst ``LevelMVarId
+  toExpr i := mkApp (mkConst ``LevelMVarId.mk) (toExpr i.name)
+
 instance : ToExpr FVarId where
   toTypeExpr := mkConst ``FVarId
   toExpr i := mkApp (mkConst ``FVarId.mk) (toExpr i.name)
