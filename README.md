@@ -8,6 +8,28 @@ expressions (`Expr`) in meta-level code.
 It combines the intuitiveness of modal sequent
 calculus with the power and speed of
 Lean 4's metaprogramming facilities.
+
+## Show me some code!
+
+```lean
+import Qq open Qq Lean
+
+-- Construct an expression
+def a : Expr := q([42 + 1])
+
+-- Construct a type expression
+def b : Q(List Nat) := q([42 + 1])
+
+-- Antiquotations
+def c (n : Q(Nat)) := q([42 + $n])
+
+-- Dependently-typed antiquotations
+def d (u : Level) (n : Q(Nat)) (x : Q(Type u × Fin ($n + 1))) : Q(Fin ($n + 3)) :=
+  q(⟨$x.2, Nat.lt_of_lt_of_le $x.2.2 (Nat.le_add_right _ 2)⟩)
+```
+
+## Typing rules
+
 The `Q(·)` modality quotes types:
 `Q(α)` denotes an expression of type `α`.
 The type former comes with the following
