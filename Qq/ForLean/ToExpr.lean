@@ -44,7 +44,6 @@ instance : ToExpr BinderInfo where
     | .implicit => mkConst ``BinderInfo.implicit
     | .strictImplicit => mkConst ``BinderInfo.strictImplicit
     | .instImplicit => mkConst ``BinderInfo.instImplicit
-    | .auxDecl => mkConst ``BinderInfo.auxDecl
 
 instance : ToExpr MData where
   toTypeExpr := mkConst ``MData
@@ -58,7 +57,7 @@ instance : ToExpr MData where
       | ofName v   => mkApp3 (mkConst ``KVMap.setName) e k (toExpr v)
       | ofNat v    => mkApp3 (mkConst ``KVMap.setNat) e k (toExpr v)
       | ofInt v    => mkApp3 (mkConst ``KVMap.setInt) e k (toExpr v)
-      | ofSyntax v => e -- TODO
+      | ofSyntax _ => e -- TODO
     e
 
 open Expr Literal in

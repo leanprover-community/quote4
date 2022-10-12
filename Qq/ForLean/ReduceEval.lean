@@ -60,7 +60,6 @@ instance : ReduceEval BinderInfo where
     | some ``BinderInfo.implicit => pure .implicit
     | some ``BinderInfo.strictImplicit => pure .strictImplicit
     | some ``BinderInfo.instImplicit => pure .instImplicit
-    | some ``BinderInfo.auxDecl => pure .auxDecl
     | _ => throwFailedToEval e
 
 instance : ReduceEval Literal where

@@ -85,7 +85,7 @@ def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : Q(MetaM $(mkIsDe
 
 def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLCtx m]
     (fvarId : FVarId) (userName : Name) (val : (QQ α)) (k : (QQ α) → m (QQ β)) : m (QQ β) := do
-  withExistingLocalDecls [LocalDecl.cdecl (← getLCtx).decls.size fvarId userName α BinderInfo.default] do
+  withExistingLocalDecls [LocalDecl.cdecl (← getLCtx).decls.size fvarId userName α .default .default] do
     return QQ.qq $ mkLet' userName (mkFVar fvarId) α val (← k (mkFVar fvarId))
 
 def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
@@ -186,16 +186,16 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
             let fvarId := FVarId.mk (← mkFreshId)
             let type ← inferType mvar
             newDecls := newDecls.push $
-              LocalDecl.cdecl default fvarId patVar type BinderInfo.default
-            assignExprMVar mvar.mvarId! (mkFVar fvarId)
+              LocalDecl.cdecl default fvarId patVar type .default .default
+            mvar.mvarId!.assign (mkFVar fvarId)
 
           for newMVar in ← getMVars pat do
             let fvarId := FVarId.mk (← mkFreshId)
-            let type ← instantiateMVars (← Meta.getMVarDecl newMVar).type
+            let type ← instantiateMVars (← newMVar.getDecl).type
             let userName ← mkFreshBinderName
             newDecls := newDecls.push $
-              LocalDecl.cdecl default fvarId userName type BinderInfo.default
-            assignExprMVar newMVar (mkFVar fvarId)
+              LocalDecl.cdecl default fvarId userName type .default .default
+            newMVar.assign (mkFVar fvarId)
 
           withExistingLocalDecls newDecls.toList do
             return (← instantiateMVars pat,
@@ -248,7 +248,7 @@ partial def isIrrefutablePattern : Term → Bool
 
 scoped elab "_comefrom" n:ident "do" b:doElem ";" body:term : term <= expectedType => do
   let _ ← extractBind expectedType
-  assignExprMVar (← elabTerm (← `(?m)).1.stripPos none).mvarId! expectedType
+  (← elabTerm (← `(?m)).1.stripPos none).mvarId!.assign expectedType
   elabTerm (← `(have $n:ident : ?m := (do $b:doElem); $body)) expectedType
 
 scoped syntax "_comefrom" ident "do" doElem : term
