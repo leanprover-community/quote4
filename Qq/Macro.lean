@@ -178,7 +178,7 @@ def unquoteLCtx : UnquoteM Unit := do
       let newTy ← unquoteExpr qTy
       modify fun s => { s with
         unquoted := s.unquoted.addDecl $
-          LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo
+          LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo ldecl.kind
         exprBackSubst := s.exprBackSubst.insert fv fv
         exprSubst := s.exprSubst.insert fv fv
       }
@@ -341,7 +341,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
         synthesizeSyntheticMVars false
         if (← logUnassignedUsingErrorInfos (← getMVars t)) then
           throwAbortTerm
-        assignExprMVar lastId t
+        lastId.assign t
     catch e =>
       if let some n := isAutoBoundImplicitLocalException? e then
         throwError "unsupported implicit auto-bound: {n} is not a level name"
