@@ -1,4 +1,4 @@
 import Lake
 open Lake DSL
 package Qq
-@[defaultTarget] lean_lib Qq
+@[default_target] lean_lib Qq
