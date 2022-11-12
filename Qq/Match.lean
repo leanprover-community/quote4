@@ -381,6 +381,6 @@ macro_rules
       subItems := subItems.push (← `(doSeqItem| do $rhs))
       items := items.push (← `(doSeqItem| comefrom alt do $subItems:doSeqItem*))
     items := items.push (← `(doSeqItem| alt))
-    `(doElem| do $items:doSeqItem*)
+    `(doElem| (do $items:doSeqItem*))
 
 end
