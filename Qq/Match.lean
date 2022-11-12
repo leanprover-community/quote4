@@ -202,7 +202,7 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
               ← sortLocalDecls (← newDecls.mapM fun d => instantiateLocalDeclMVars d),
               r.newParamNames)
 
-scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : term <= expectedType => do
+scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term : term <= expectedType => do
   let emr ← extractBind expectedType
   let alt ← elabTermEnsuringType alt expectedType
 
@@ -234,9 +234,9 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term "; " body:term : 
   makeMatchCode q(‹_›) inst oldPatVarDecls argTyExpr synthed q($e') alt expectedType fun expectedType =>
     return QQ.qq (← elabTerm body expectedType)
 
-scoped syntax "_qq_match" term " ← " term " | " doElem : term
+scoped syntax "_qq_match" term " ← " term " | " doSeq : term
 macro_rules
-  | `(assert! (_qq_match $pat ← $e | $alt); $x) => `(_qq_match $pat ← $e | (do $alt:doElem); $x)
+  | `(assert! (_qq_match $pat ← $e | $alt); $x) => `(_qq_match $pat ← $e | (do $alt) in $x)
 
 partial def isIrrefutablePattern : Term → Bool
   | `(($stx)) => isIrrefutablePattern stx
@@ -246,18 +246,18 @@ partial def isIrrefutablePattern : Term → Bool
   | `(true) => false | `(false) => false -- TODO properly
   | stx => stx.1.isIdent
 
-scoped elab "_comefrom" n:ident "do" b:doElem ";" body:term : term <= expectedType => do
+scoped elab "_comefrom" n:ident "do" b:doSeq " in " body:term : term <= expectedType => do
   let _ ← extractBind expectedType
   (← elabTerm (← `(?m)).1.stripPos none).mvarId!.assign expectedType
-  elabTerm (← `(have $n:ident : ?m := (do $b:doElem); $body)) expectedType
+  elabTerm (← `(have $n:ident : ?m := (do $b:doSeq); $body)) expectedType
 
-scoped syntax "_comefrom" ident "do" doElem : term
-macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b; $body)
+scoped syntax "_comefrom" ident "do" doSeq : term
+macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b in $body)
 
-scoped macro "comefrom" n:ident "do" b:doElem : doElem =>
+scoped macro "comefrom" n:ident "do" b:doSeq : doElem =>
   `(doElem| assert! (_comefrom $n do $b))
 
-def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat : Term) (rhs alt : TSyntax `doElem) : m (List (TSyntax ``doSeqItem)) := do
+def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat : Term) (rhs : TSyntax `doElem) (alt : TSyntax ``doSeq) : m (List (TSyntax ``doSeqItem)) := do
   match pat with
     | `(_) => return []
     | _ =>
@@ -278,7 +278,7 @@ partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($_)) => true
   | stx => stx.getArgs.any hasQMatch
 
-partial def Impl.floatQMatch (alt : TSyntax `doElem) : Term → StateT (List (TSyntax ``doSeqItem)) MacroM Term
+partial def Impl.floatQMatch (alt : TSyntax ``doSeq) : Term → StateT (List (TSyntax ``doSeqItem)) MacroM Term
   | `(~q($term)) =>
     withFreshMacroScope do
       let auxDoElem ← `(doSeqItem| let ~q($term) ← x | $alt)
@@ -339,7 +339,7 @@ macro_rules
     if !hasQMatch pat then Macro.throwUnsupported
     Macro.throwError "let-bindings with ~q(.) require an explicit alternative"
 
-  | `(doElem| let $pat:term ← $rhs:doElem | $alt:doElem) => do
+  | `(doElem| let $pat:term ← $rhs:doElem | $alt:doSeq) => do
     if !hasQMatch pat then Macro.throwUnsupported
     match pat with
       | `(~q($pat)) =>
@@ -356,9 +356,9 @@ macro_rules
         `(doElem| do $(lifts.push t):doSeqItem*)
 
       | _ =>
-        let (pat', auxs) ← floatQMatch (← `(doElem| alt)) pat []
+        let (pat', auxs) ← floatQMatch (← `(doSeq| alt)) pat []
         let items :=
-          #[← `(doSeqItem| comefrom alt do $alt:doElem)] ++
+          #[← `(doSeqItem| comefrom alt do $alt:doSeq)] ++
           (← mkLetDoSeqItem pat' rhs alt) ++
           auxs
         `(doElem| do $items:doSeqItem*)
@@ -377,10 +377,10 @@ macro_rules
     for pats in patss.reverse, rhs in rhss.reverse do
       let mut subItems : Array (TSyntax ``doSeqItem) := #[]
       for discr in discrs, pat in pats do
-        subItems := subItems ++ (← mkLetDoSeqItem pat (← `(doElem| pure $discr:term)) (← `(doElem| alt)))
+        subItems := subItems ++ (← mkLetDoSeqItem pat (← `(doElem| pure $discr:term)) (← `(doSeq| alt)))
       subItems := subItems.push (← `(doSeqItem| do $rhs))
-      items := items.push (← `(doSeqItem| comefrom alt do do $subItems:doSeqItem*))
+      items := items.push (← `(doSeqItem| comefrom alt do $subItems:doSeqItem*))
     items := items.push (← `(doSeqItem| alt))
-    `(doElem| (do $items:doSeqItem*))
+    `(doElem| do $items:doSeqItem*)
 
 end
