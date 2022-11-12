@@ -370,23 +370,33 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
 
   instantiateMVars (mkMVar mvars.back)
 
-scoped elab "q(" t:term ")" : term <= expectedType => do
-  let expectedType ← instantiateMVars expectedType
-  if expectedType.hasExprMVar then tryPostpone
-  ensureHasType expectedType $ ← commitIfDidNotPostpone do
-    let mut expectedType ← withReducible <| Impl.whnf expectedType
-    if !expectedType.isAppOfArity ``QQ 1 then
-      let u ← mkFreshExprMVar (mkConst ``Level)
-      let u' := mkApp (mkConst ``mkSort) u
-      let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
-      expectedType := mkApp (mkConst ``QQ) t
-    Impl.macro t expectedType
+scoped syntax "q(" term Parser.Term.optType ")" : term
 
-scoped elab "Q(" t:term ")" : term <= expectedType => do
-  let expectedType ← instantiateMVars expectedType
-  let (true) ← isDefEq expectedType (mkSort (mkLevelSucc levelZero)) |
-    throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
-  commitIfDidNotPostpone do Impl.macro t expectedType
+macro_rules | `(q($t : $ty)) => `(q(($t : $ty)))
+
+elab_rules : term <= expectedType
+  | `(q($t)) => do
+    let expectedType ← instantiateMVars expectedType
+    if expectedType.hasExprMVar then tryPostpone
+    ensureHasType expectedType $ ← commitIfDidNotPostpone do
+      let mut expectedType ← withReducible <| Impl.whnf expectedType
+      if !expectedType.isAppOfArity ``QQ 1 then
+        let u ← mkFreshExprMVar (mkConst ``Level)
+        let u' := mkApp (mkConst ``mkSort) u
+        let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
+        expectedType := mkApp (mkConst ``QQ) t
+      Impl.macro t expectedType
+
+scoped syntax "Q(" term Parser.Term.optType ")" : term
+
+macro_rules | `(Q($t : $ty)) => `(Q(($t : $ty)))
+
+elab_rules : term <= expectedType
+  | `(Q($t)) => do
+    let expectedType ← instantiateMVars expectedType
+    let (true) ← isDefEq expectedType (mkSort (mkLevelSucc levelZero)) |
+      throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
+    commitIfDidNotPostpone do Impl.macro t expectedType
 
 
 namespace Impl
