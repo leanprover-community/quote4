@@ -1,7 +1,6 @@
 import Qq.Macro
 import Qq.MetaM
 import Qq.ForLean.Do
-import Qq.Rw
 import Qq.SortLocalDecls
 
 open Lean in
@@ -105,8 +104,8 @@ def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
 
 set_option linter.all false in
 def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLiftT MetaM $m)) (instBind : Q(Bind $m))
-    (decls : List PatVarDecl) (ty : Q(Expr))
-    (pat discr : Q(Expr)) (alt : Q($m $γ)) (expectedType : Expr)
+    (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(QQ (mkSort $uTy)))
+    (pat discr : Q(QQ $ty)) (alt : Q($m $γ)) (expectedType : Expr)
     (k : Expr → TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
   let nextDecls : List PatVarDecl :=
     decls.map fun decl => { decl with ty := decl.ty.map fun e => replaceTempExprsByQVars decls e }
@@ -115,15 +114,16 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLif
     let next : Q($m $γ) :=
       q(if $(mkIsDefEqResultVal decls fv) then
           $(← mkQqLets nextDecls fv do
-            let pat : Q(Expr) := QQ.qq' $ replaceTempExprsByQVars decls pat
+            let pat : Q(QQ $ty) := QQ.qq' $ replaceTempExprsByQVars decls pat
             let (_, s) ← unquoteLCtx.run {}
             let discr' ← (unquoteExpr discr).run' s
             let pat' ← (unquoteExpr pat).run' s
-            let lctx ← qrwLCtx s discr' pat'
-            let expectedType ← qrwE s discr' pat' (← instantiateMVars expectedType)
-            withLCtx lctx (← determineLocalInstances lctx) do
+            let discr : type_of% discr := q(.qq $discr)
+            let pat : type_of% pat := q(.qq $pat)
+            withLocalDeclDQ (← mkFreshUserName `match_eq) q(QE $discr $pat) fun h => do
               let res ← k expectedType
               let res : Q($m $γ) ← instantiateMVars res
+              let res : Q($m $γ) := (← res.abstractM #[h]).instantiate #[q(⟨⟩ : QE $discr $pat)]
               return res)
         else
           $alt)
@@ -206,7 +206,8 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let emr ← extractBind expectedType
   let alt ← elabTermEnsuringType alt expectedType
 
-  let argTyExpr ← mkFreshExprMVarQ q(Expr)
+  let argLvlExpr ← mkFreshExprMVarQ q(Level)
+  let argTyExpr ← mkFreshExprMVarQ q(QQ (mkSort $argLvlExpr))
   let e' ← elabTermEnsuringTypeQ e q(QQ $argTyExpr)
   let argTyExpr ← instantiateMVarsQ argTyExpr
 
@@ -223,7 +224,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   for ldecl in patVarDecls do
     let qty ← (quoteExpr ldecl.type).run s
     oldPatVarDecls := oldPatVarDecls ++ [{ ty := some qty, fvarId := ldecl.fvarId, userName := ldecl.userName }]
-    s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr ldecl.toExpr }
+    s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr (.quoted ldecl.toExpr) }
 
   let m : Q(Type → Type) := QQ.qq' emr.m
   let γ : Q(Type) := QQ.qq' emr.returnType
@@ -231,7 +232,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q($m $γ) := alt
-  makeMatchCode q(‹_›) inst oldPatVarDecls argTyExpr synthed q($e') alt expectedType fun expectedType =>
+  makeMatchCode q(‹_›) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
     return QQ.qq (← elabTerm body expectedType)
 
 scoped syntax "_qq_match" term " ← " term " | " doSeq : term

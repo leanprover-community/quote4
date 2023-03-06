@@ -8,6 +8,10 @@ namespace Qq
 
 namespace Impl
 
+inductive ExprBackSubstResult
+  | quoted (e : Expr)
+  | unquoted (e : Expr)
+
 structure UnquoteState where
   -- maps quoted expressions (of type Level) in the old context to level parameter names in the new context
   levelSubst : HashMap Expr Level := {}
@@ -19,7 +23,7 @@ structure UnquoteState where
   unquoted := LocalContext.empty
 
   -- maps free variables in the new context to expressions in the old context (of type Expr)
-  exprBackSubst : HashMap Expr Expr := {}
+  exprBackSubst : HashMap Expr ExprBackSubstResult := {}
 
   -- maps free variables in the new context to levels in the old context (of type Level)
   levelBackSubst : HashMap Level Expr := {}
@@ -134,7 +138,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     modify fun s => { s with
       unquoted := s.unquoted.mkLocalDecl fvarId name ty
       exprSubst := s.exprSubst.insert e fv
-      exprBackSubst := s.exprBackSubst.insert fv e
+      exprBackSubst := s.exprBackSubst.insert fv (.quoted e)
     }
     return fv
   let e ← whnf e
@@ -168,6 +172,22 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
 
 end
 
+def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
+  let .cdecl aIdx aFVarId aUserName aType _ aKind ← a.getDecl | return none
+  let bFVars := (← b.collectFVars.run {}).2
+  let toRevert := (← collectForwardDeps #[.fvar a] (preserveOrder := true)).map (·.fvarId!)
+  for y in toRevert do if bFVars.fvarSet.contains y then return none
+  let oldLCtx ← getLCtx
+  let newLCtx := toRevert.foldl (init := oldLCtx) (·.erase ·)
+  let newLCtx := newLCtx.addDecl <| .ldecl aIdx aFVarId aUserName aType b (nonDep := false) aKind
+  let newLCtx := toRevert.filter (· != a) |>.foldl (init := newLCtx) (·.addDecl <| oldLCtx.get! ·)
+  return newLCtx
+
+def makeDefEq (a b : Expr) : MetaM (Option LocalContext) := do
+  if let .fvar a ← whnf a then if let some lctx ← makeZetaReduce a b then return lctx
+  if let .fvar b ← whnf b then if let some lctx ← makeZetaReduce b a then return lctx
+  return none
+
 def unquoteLCtx : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
@@ -179,8 +199,23 @@ def unquoteLCtx : UnquoteM Unit := do
       modify fun s => { s with
         unquoted := s.unquoted.addDecl $
           LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo ldecl.kind
-        exprBackSubst := s.exprBackSubst.insert fv fv
+        exprBackSubst := s.exprBackSubst.insert fv (.quoted fv)
         exprSubst := s.exprSubst.insert fv fv
+      }
+    else if whnfTy.isAppOfArity ``QE 4 then
+      let tyLevel ← unquoteLevel (whnfTy.getArg! 0)
+      let ty ← unquoteExpr (whnfTy.getArg! 1)
+      let lhs ← unquoteExpr (whnfTy.getArg! 2)
+      let rhs ← unquoteExpr (whnfTy.getArg! 3)
+      let eqTy := mkApp3 (.const ``Eq [tyLevel]) ty lhs rhs
+      let unquoted := (← get).unquoted
+      let unquoted := unquoted.addDecl <|
+        .cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) eqTy ldecl.binderInfo ldecl.kind
+      let unquoted := (← withLCtx unquoted {} do makeDefEq lhs rhs).getD unquoted
+      modify fun s => { s with
+        unquoted
+        exprBackSubst := s.exprBackSubst.insert fv (.unquoted (mkApp2 (.const ``Eq.refl [tyLevel]) ty lhs))
+        -- exprSubst := s.exprSubst.insert fv fv
       }
     else if whnfTy.isAppOfArity ``Level 0 then
       modify fun s => { s with
@@ -192,7 +227,7 @@ def unquoteLCtx : UnquoteM Unit := do
       let LOption.some inst ← trySynthInstance (mkApp (mkConst ``ToExpr [u]) ty) | pure ()
       modify fun s => { s with
         unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
-        exprBackSubst := s.exprBackSubst.insert fv (mkApp3 (mkConst ``toExpr [u]) ty inst fv)
+        exprBackSubst := s.exprBackSubst.insert fv (.quoted (mkApp3 (mkConst ``toExpr [u]) ty inst fv))
         exprSubst := s.exprSubst.insert fv fv
       }
 
@@ -240,7 +275,9 @@ partial def quoteExpr : Expr → QuoteM Expr
   | .bvar i => return mkApp (mkConst ``Expr.bvar) (toExpr i)
   | e@(.fvar ..) => do
     let some r := (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
-    return r
+    match r with
+    | .quoted r => return r
+    | .unquoted r => quoteExpr r
   | e@(.mvar ..) => throwError "resulting term contains metavariable {e}"
   | .sort u => return mkApp (mkConst ``Expr.sort) (← quoteLevel u)
   | .const n ls => return mkApp2 (mkConst ``Expr.const) (toExpr n) (← quoteLevelList ls)
@@ -398,6 +435,7 @@ elab_rules : term <= expectedType
       throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
     commitIfDidNotPostpone do Impl.macro t expectedType
 
+scoped notation a:50 " =Q " b:51 => QE q(a) q(b)
 
 namespace Impl
 

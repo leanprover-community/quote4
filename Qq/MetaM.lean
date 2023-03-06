@@ -5,7 +5,7 @@ open Lean Elab Term Meta
 namespace Qq
 
 def mkFreshExprMVarQ (ty : Q(Sort u)) (kind := MetavarKind.natural) (userName := Name.anonymous) : MetaM Q($ty) := do
-  mkFreshExprMVar ty kind userName
+  mkFreshExprMVar (some ty) kind userName
 
 def withLocalDeclDQ [Monad n] [MonadControlT MetaM n] (name : Name) (β : Q(Sort u)) (k : Q($β) → n α) : n α :=
   withLocalDeclD name β k
@@ -25,7 +25,7 @@ def instantiateMVarsQ {α : Q(Sort u)} (e : Q($α)) : MetaM Q($α) := do
 def elabTermEnsuringTypeQ (stx : Syntax) (expectedType : Q(Sort u))
     (catchExPostpone := true) (implicitLambda := true) (errorMsgHeader? : Option String := none) :
     TermElabM Q($expectedType) := do
-  elabTermEnsuringType stx expectedType catchExPostpone implicitLambda errorMsgHeader?
+  elabTermEnsuringType stx (some expectedType) catchExPostpone implicitLambda errorMsgHeader?
 
 def inferTypeQ (e : Expr) : MetaM ((u : Level) × (α : Q(Sort $u)) × Q($α)) := do
   let α ← inferType e
@@ -37,3 +37,13 @@ def checkTypeQ (e : Expr) (ty : Q(Sort $u)) : MetaM (Option Q($ty)) := do
     return some e
   else
     return none
+
+inductive MaybeDefEq {α : Q(Sort $u)} (a b : Q($α)) where
+  | defEq : QE a b → MaybeDefEq a b
+  | notDefEq : MaybeDefEq a b
+
+def isDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (MaybeDefEq a b) := do
+  if ← isDefEq a b then
+    return .defEq ⟨⟩
+  else
+    return .notDefEq
