@@ -250,6 +250,9 @@ def isLevelFVar (n : Name) : MetaM (Option Expr) := do
 
 abbrev QuoteM := ReaderT UnquoteState MetaM
 
+instance : MonadLift QuoteM UnquoteM where
+  monadLift k := do k (← get)
+
 def quoteLevel : Level → QuoteM Expr
   | .zero => return mkConst ``Level.zero
   | .succ u => return mkApp (mkConst ``Level.succ) (← quoteLevel u)

@@ -47,3 +47,8 @@ def isDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (MaybeDefEq a b) := do
     return .defEq ⟨⟩
   else
     return .notDefEq
+
+def assertDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (PLift (QE a b)) := do
+  match ← isDefEqQ a b with
+  | .defEq witness => return ⟨witness⟩
+  | .notDefEq => throwError "{a} is not definitionally equal to{indentExpr b}"
