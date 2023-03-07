@@ -30,8 +30,6 @@ elab_rules : term <= expectedType | `(assertInstancesCommuteImpl $cont) => do
     let ty : Q(QQ (mkSort $u')) ← quoteExpr ty
     let lhs : Q(QQ $ty) ← quoteExpr (.fvar fvar)
     let rhs : Q(QQ $ty) ← quoteExpr inst
-    let lhs : type_of% lhs := q(.qq $lhs)
-    let rhs : type_of% rhs := q(.qq $rhs)
     return (← mkFreshUserName ((← fvar.getUserName).eraseMacroScopes.appendAfter "_eq"),
       q(withNewMCtxDepth do assertDefEqQ $lhs $rhs))
   match inst? with

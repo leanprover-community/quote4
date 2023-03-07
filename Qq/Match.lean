@@ -118,8 +118,6 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLif
             let (_, s) ← unquoteLCtx.run {}
             let discr' ← (unquoteExpr discr).run' s
             let pat' ← (unquoteExpr pat).run' s
-            let discr : type_of% discr := q(.qq $discr)
-            let pat : type_of% pat := q(.qq $pat)
             withLocalDeclDQ (← mkFreshUserName `match_eq) q(QE $discr $pat) fun h => do
               let res ← k expectedType
               let res : Q($m $γ) ← instantiateMVars res

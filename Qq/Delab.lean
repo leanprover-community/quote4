@@ -46,3 +46,11 @@ def delabq : Delab := do
   checkQqDelabOptions
   let stx ← withAppArg delabQuoted
   `(q($stx))
+
+@[delab app.Qq.QE]
+def delabQE : Delab := do
+  guard $ (← getExpr).getAppNumArgs == 4
+  checkQqDelabOptions
+  let lhs ← withAppFn do withAppArg delabQuoted
+  let rhs ← withAppArg delabQuoted
+  `($lhs =Q $rhs)
