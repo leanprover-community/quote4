@@ -18,8 +18,8 @@ def findRedundantLocalInst? : MetaM (Option (FVarId × Expr)) := do
       return (fvar.fvarId!, result)
   return none
 
-scoped syntax "assertInstancesCommuteImpl " term : term
-elab_rules : term <= expectedType | `(assertInstancesCommuteImpl $cont) => do
+scoped syntax "assertInstancesCommuteImpl" "!"? term : term
+elab_rules : term <= expectedType | `(assertInstancesCommuteImpl $[!%$assume]? $cont) => do
   let inst? : Option (Name × Expr) ← StateT.run' (m := MetaM) (s := {}) do
     unquoteLCtx
     (← withLCtx (← get).unquoted (← determineLocalInstances (← get).unquoted) do
@@ -31,7 +31,10 @@ elab_rules : term <= expectedType | `(assertInstancesCommuteImpl $cont) => do
     let lhs : Q(QQ $ty) ← quoteExpr (.fvar fvar)
     let rhs : Q(QQ $ty) ← quoteExpr inst
     return (← mkFreshUserName ((← fvar.getUserName).eraseMacroScopes.appendAfter "_eq"),
-      q(withNewMCtxDepth do assertDefEqQ $lhs $rhs))
+      if assume.isSome then
+        q(pure ⟨⟨⟩⟩ : MetaM (PLift (QE $lhs $rhs)))
+      else
+        q(withNewMCtxDepth do assertDefEqQ $lhs $rhs))
   match inst? with
   | some (n, cmd) =>
     elabTerm (← `($(← exprToSyntax cmd) >>=
@@ -41,12 +44,16 @@ elab_rules : term <= expectedType | `(assertInstancesCommuteImpl $cont) => do
       expectedType
   | none => elabTerm cont expectedType
 
-scoped syntax "assertInstancesCommuteDummy" : term
+scoped syntax "assertInstancesCommuteDummy" "!"? : term
 macro_rules
-  | `(assert! assertInstancesCommuteDummy; $cont) => `(assertInstancesCommuteImpl $cont)
+  | `(assert! assertInstancesCommuteDummy $[!%$assume]?; $cont) =>
+    `(assertInstancesCommuteImpl $[!%$assume]? $cont)
 
 end Impl
 open Impl
 
 scoped macro "assertInstancesCommute" : doElem =>
   `(doElem| assert! assertInstancesCommuteDummy)
+
+scoped macro "assumeInstancesCommute" : doElem =>
+  `(doElem| assert! assertInstancesCommuteDummy !)
