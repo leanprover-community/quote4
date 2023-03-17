@@ -32,6 +32,23 @@ structure UnquoteState where
 
 abbrev UnquoteM := StateT UnquoteState MetaM
 
+abbrev QuoteM := ReaderT UnquoteState MetaM
+
+instance : MonadLift QuoteM UnquoteM where
+  monadLift k := do k (← get)
+
+def determineLocalInstances (lctx : LocalContext) : MetaM LocalInstances := do
+  let mut localInsts : LocalInstances := {}
+  for ldecl in lctx do
+    match (← isClass? ldecl.type) with
+      | some c => localInsts := localInsts.push { className := c, fvar := ldecl.toExpr }
+      | none => pure ()
+  pure localInsts
+
+def withUnquotedLCtx [MonadControlT MetaM m] [Monad m] [MonadLiftT QuoteM m] (k : m α) : m α := do
+  let unquoted := (← (read : QuoteM _)).unquoted
+  withLCtx unquoted (← (determineLocalInstances unquoted : QuoteM _)) k
+
 open Name in
 def addDollar : Name → Name
   | anonymous => str anonymous "$"
@@ -211,7 +228,7 @@ def unquoteLCtx : UnquoteM Unit := do
       let unquoted := (← get).unquoted
       let unquoted := unquoted.addDecl <|
         .cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) eqTy ldecl.binderInfo ldecl.kind
-      let unquoted := (← withLCtx unquoted {} do makeDefEq lhs rhs).getD unquoted
+      let unquoted := (← withUnquotedLCtx do makeDefEq lhs rhs).getD unquoted
       modify fun s => { s with
         unquoted
         exprBackSubst := s.exprBackSubst.insert fv (.unquoted (mkApp2 (.const ``Eq.refl [tyLevel]) ty lhs))
@@ -231,14 +248,6 @@ def unquoteLCtx : UnquoteM Unit := do
         exprSubst := s.exprSubst.insert fv fv
       }
 
-def determineLocalInstances (lctx : LocalContext) : MetaM LocalInstances := do
-  let mut localInsts : LocalInstances := {}
-  for ldecl in lctx do
-    match (← isClass? ldecl.type) with
-      | some c => localInsts := localInsts.push { className := c, fvar := ldecl.toExpr }
-      | none => pure ()
-  pure localInsts
-
 def isLevelFVar (n : Name) : MetaM (Option Expr) := do
   match (← getLCtx).findFromUserName? n with
     | none => pure none
@@ -247,11 +256,6 @@ def isLevelFVar (n : Name) : MetaM (Option Expr) := do
         some decl.toExpr
       else
         none
-
-abbrev QuoteM := ReaderT UnquoteState MetaM
-
-instance : MonadLift QuoteM UnquoteM where
-  monadLift k := do k (← get)
 
 def quoteLevel : Level → QuoteM Expr
   | .zero => return mkConst ``Level.zero

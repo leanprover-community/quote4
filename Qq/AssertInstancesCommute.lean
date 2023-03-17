@@ -10,22 +10,24 @@ def isRedundantLocalInst? (inst : FVarId) : MetaM (Option Expr) := do
   if ldecl.hasValue then return none
   let rest := (← getLocalInstances).filter (·.fvar != .fvar inst)
   withLCtx (← getLCtx) rest do
-  synthInstance? ldecl.type
+  let some inst ← synthInstance? ldecl.type | return none
+  return if (← makeDefEq ldecl.toExpr inst).isSome then inst else none
 
-def findRedundantLocalInst? : MetaM (Option (FVarId × Expr)) := do
-  for {fvar, ..} in ← getLocalInstances do
-    if let some result ← isRedundantLocalInst? fvar.fvarId! then
-      return (fvar.fvarId!, result)
+def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
+  for {fvar, ..} in ← withUnquotedLCtx getLocalInstances do
+    if let some (.quoted (.fvar quotedFVar)) := (← read).exprBackSubst.find? fvar then
+      if (← quotedFVar.getDecl).hasValue then continue
+      if let some result ← withUnquotedLCtx do isRedundantLocalInst? fvar.fvarId! then
+        return (fvar.fvarId!, result)
   return none
 
 def findRedundantLocalInstQuoted? :
     MetaM (Option (FVarId × (u : Q(Level)) × (ty : Q(QQ (mkSort $u))) × Q(QQ $ty) × Q(QQ $ty))) := do
   StateT.run' (m := MetaM) (s := {}) do
   unquoteLCtx
-  (← withLCtx (← get).unquoted (← determineLocalInstances (← get).unquoted) do
-    (← findRedundantLocalInst?).mapM fun (fvar, inst) => do
-      let ty ← inferType (.fvar fvar)
-      return (← getLevel ty, ty, fvar, inst)) |>.mapM fun (u, ty, fvar, inst) => do
+  (← findRedundantLocalInst?).mapM fun (fvar, inst) => do
+  let ty ← withUnquotedLCtx do inferType (.fvar fvar)
+  let u ← withUnquotedLCtx do getLevel ty
   return ⟨fvar, ← quoteLevel u, ← quoteExpr ty, ← quoteExpr (.fvar fvar), ← quoteExpr inst⟩
 
 scoped syntax "assertInstancesCommuteImpl" term : term
