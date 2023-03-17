@@ -374,7 +374,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let lastDecl ← Lean.Elab.Term.getMVarDecl lastId
 
   withLevelNames s.levelNames do
-    try resettingSynthInstanceCache do
+    try
       withLCtx lastDecl.lctx lastDecl.localInstances do
         let t ← Lean.Elab.Term.elabTerm t lastDecl.type
         let t ← ensureHasType lastDecl.type t

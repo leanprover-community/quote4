@@ -165,7 +165,6 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
     (levelNames : List Name) : TermElabM (Expr × Array LocalDecl × Array Name) :=
   withLCtx lctx localInsts do
     withLevelNames levelNames do
-      resettingSynthInstanceCache do
           let (pat, patVars) ← getPatVars pat #[]
           let pat ← Lean.Elab.Term.elabTerm pat ty
           let pat ← ensureHasType ty pat
