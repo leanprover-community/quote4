@@ -14,8 +14,8 @@ instance : Hashable (QQ α) := inferInstanceAs (Hashable Expr)
 instance : Inhabited (QQ α) := inferInstanceAs (Inhabited Expr)
 instance : ToString (QQ α) := inferInstanceAs (ToString Expr)
 
-instance : Coe (QQ α) Expr where coe e := e
-instance : Coe (QQ α) MessageData where coe := .ofExpr
+instance : CoeOut (QQ α) Expr where coe e := e
+instance : CoeOut (QQ α) MessageData where coe := .ofExpr
 instance : ToMessageData (QQ α) where toMessageData := .ofExpr
 
 @[irreducible]
