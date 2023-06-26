@@ -140,7 +140,7 @@ def mkNAryFunctionType : Nat → MetaM Expr
   | n+1 => do withLocalDeclD `x (← mkFreshTypeMVar) fun x => do
     mkForallFVars #[x] (← mkNAryFunctionType n)
 
-partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr)) TermElabM Term := do
+partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr × Term)) TermElabM Term := do
   match pat with
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
     | _ => if isPatVar pat then return ← mkMVar pat #[]
@@ -156,9 +156,12 @@ partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr)) TermE
 
     mkMVar (fn : Syntax) (args : Array Term) : StateT _ TermElabM Term := do
       let args ← args.mapM getPatVars
+      let id := fn.getAntiquotTerm.getId
       withFreshMacroScope do
+        if let some (_, _, _, m) := (← get).find? fun (n, _) => n == id then
+          return ← `($m $args*)
         let mvar ← elabTerm (← `(?m)).1.stripPos (← mkNAryFunctionType args.size)
-        modify fun s => s.push (fn.getAntiquotTerm.getId, args.size, mvar)
+        modify (·.push (id, args.size, mvar, ← `(?m)))
         `(?m $args*)
 
 def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
@@ -178,7 +181,7 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
 
           let mut newDecls := #[]
 
-          for (patVar, _, mvar) in patVars do
+          for (patVar, _, mvar, _) in patVars do
             assert! mvar.isMVar
             let fvarId := FVarId.mk (← mkFreshId)
             let type ← inferType mvar
