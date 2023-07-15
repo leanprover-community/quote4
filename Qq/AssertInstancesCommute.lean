@@ -2,7 +2,7 @@ import Qq.MetaM
 
 namespace Qq
 
-scoped syntax "assumeInstancesCommute" term : term
+scoped syntax "assumeInstancesCommute'" term : term
 
 namespace Impl
 open Lean Meta Elab Term
@@ -51,14 +51,14 @@ elab_rules : term <= expectedType | `(assertInstancesCommuteImpl $cont) => do
       expectedType
   | none => elabTerm cont expectedType
 
-elab_rules : term <= expectedType | `(assumeInstancesCommute $cont) => do
+elab_rules : term <= expectedType | `(assumeInstancesCommute' $cont) => do
   match ← findRedundantLocalInstQuoted? with
   | some ⟨fvar, _, _, lhs, rhs⟩ =>
     let n ← mkFreshUserName ((← fvar.getUserName).eraseMacroScopes.appendAfter "_eq")
     let ty := q(QE $lhs $rhs)
     elabTerm (← `(
         have $(mkIdent n) : $(← exprToSyntax ty) := ⟨⟩
-        assumeInstancesCommute $cont))
+        assumeInstancesCommute' $cont))
       expectedType
   | none => elabTerm cont expectedType
 
@@ -70,7 +70,7 @@ macro_rules
 syntax "assumeInstancesCommuteDummy" : term
 macro_rules
   | `(assert! assumeInstancesCommuteDummy; $cont) =>
-    `(assumeInstancesCommute $cont)
+    `(assumeInstancesCommute' $cont)
 
 end Impl
 open Impl

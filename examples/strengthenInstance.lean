@@ -19,5 +19,5 @@ def maybeReassocAlt {M : Q(Type $u)} (mul : Q(Mul $M)) (a b : Q($M)) :
 
 def maybeReassocPure {M : Q(Type $u)} (mul : Q(Mul $M)) (a b : Q($M)) (semigroup : Q(Semigroup $M)) :
     Q($a*($b*$b) = ($a*$b)*$b) :=
-  assumeInstancesCommute
+  assumeInstancesCommute'
   q(by rw [mul_assoc])
