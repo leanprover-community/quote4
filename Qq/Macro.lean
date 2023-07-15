@@ -12,20 +12,28 @@ inductive ExprBackSubstResult
   | quoted (e : Expr)
   | unquoted (e : Expr)
 
+inductive MVarSynth
+  | term (quotedType : Expr) (unquotedMVar : MVarId) --> QQ.qq _ _
+  | type (unquotedMVar : MVarId) --> QQ _
+  | level (unquotedMVar : LMVarId) --> Level
+
 structure UnquoteState where
-  -- maps quoted expressions (of type Level) in the old context to level parameter names in the new context
+  /-- Quoted mvars in the outside lctx (of type `Level`, `QQ _`, or `Type`) -/
+  mvars : List (MVarId × MVarSynth) := []
+
+  /- Maps quoted expressions (of type Level) in the old context to level parameter names in the new context -/
   levelSubst : HashMap Expr Level := {}
 
-  -- maps quoted expressions (of type Expr) in the old context to expressions in the new context
+  /- Maps quoted expressions (of type Expr) in the old context to expressions in the new context -/
   exprSubst : HashMap Expr Expr := {}
 
-  -- new unquoted local context
+  /- New unquoted local context -/
   unquoted := LocalContext.empty
 
-  -- maps free variables in the new context to expressions in the old context (of type Expr)
+  /- Maps free variables in the new context to expressions in the old context (of type Expr) -/
   exprBackSubst : HashMap Expr ExprBackSubstResult := {}
 
-  -- maps free variables in the new context to levels in the old context (of type Level)
+  /- Maps free variables in the new context to levels in the old context (of type Level) -/
   levelBackSubst : HashMap Level Expr := {}
 
   levelNames : List Name := []
@@ -96,6 +104,11 @@ partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
     | some e => whnf e (if isBad e then e0 else e)
     | none => pure e0
 
+def whnfR (e : Expr) : MetaM Expr :=
+  withReducible (whnf e)
+
+mutual
+
 partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   let e ← whnf e
   if let some l := (← get).levelSubst.find? e then
@@ -107,6 +120,10 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   else if e.isAppOfArity ``Level.param 1 then return mkLevelParam (← reduceEval (e.getArg! 0))
   else if e.isAppOfArity ``Level.mvar 1 then return mkLevelMVar (← reduceEval (e.getArg! 0))
   else
+    if e.getAppFn.isMVar then
+      let e' ← mkFreshExprMVar (mkConst ``Level)
+      if ← isDefEq e e' then
+        return ← unquoteLevelMVar e'.mvarId!
     let name ← mkAbstractedLevelName e
     let l := mkLevelParam name
     modify fun s => { s with
@@ -114,6 +131,17 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
       levelBackSubst := s.levelBackSubst.insert l e
     }
     pure l
+
+partial def unquoteLevelMVar (mvar : MVarId) : UnquoteM Level := do
+  let newMVar ← mkFreshLevelMVar
+  modify fun s => { s with
+    levelSubst := s.levelSubst.insert (.mvar mvar) newMVar
+    levelBackSubst := s.levelBackSubst.insert newMVar (.mvar mvar)
+    mvars := (mvar, .level newMVar.mvarId!) :: s.mvars
+  }
+  return newMVar
+
+end
 
 partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
   let e ← whnf e
@@ -130,7 +158,24 @@ def mkAbstractedName (e : Expr) : MetaM Name :=
 @[inline] opaque betaRev' (e : Expr) (revArgs : List Expr) : Expr :=
   e.betaRev revArgs.toArray
 
+def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
+  let .cdecl aIdx aFVarId aUserName aType _ aKind ← a.getDecl | return none
+  let bFVars := (← b.collectFVars.run {}).2
+  let toRevert := (← collectForwardDeps #[.fvar a] (preserveOrder := true)).map (·.fvarId!)
+  for y in toRevert do if bFVars.fvarSet.contains y then return none
+  let oldLCtx ← getLCtx
+  let newLCtx := toRevert.foldl (init := oldLCtx) (·.erase ·)
+  let newLCtx := newLCtx.addDecl <| .ldecl aIdx aFVarId aUserName aType b (nonDep := false) aKind
+  let newLCtx := toRevert.filter (· != a) |>.foldl (init := newLCtx) (·.addDecl <| oldLCtx.get! ·)
+  return newLCtx
+
+def makeDefEq (a b : Expr) : MetaM (Option LocalContext) := do
+  if let .fvar a ← whnf a then if let some lctx ← makeZetaReduce a b then return lctx
+  if let .fvar b ← whnf b then if let some lctx ← makeZetaReduce b a then return lctx
+  return none
+
 mutual
+
 partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
   let e ← whnf e
   if e.isAppOfArity ``List.nil 1 then
@@ -140,14 +185,32 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
   else
     throwFailedToEval e
 
+partial def unquoteExprMVar (mvarId : MVarId) : UnquoteM Expr := do
+  have mvar := .mvar mvarId
+  let ty ← instantiateMVars (← whnfR (← inferType mvar))
+  unless ty.isAppOf ``QQ do throwError "not of type Q(_):{indentExpr ty}"
+  have et := ty.getArg! 0
+  let newET ← unquoteExpr et
+  let newMVar ← withUnquotedLCtx do mkFreshExprMVar newET
+  modify fun s => { s with
+    exprSubst := s.exprSubst.insert mvar newMVar
+    exprBackSubst := s.exprBackSubst.insert newMVar (.quoted mvar)
+    mvars := (mvarId, .term et newMVar.mvarId!) :: s.mvars
+  }
+  return newMVar
+
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if e.isAppOfArity ``QQ.qq 2 then return ← unquoteExpr (e.getArg! 1)
   if e.isAppOfArity ``toExpr 3 then return e.getArg! 2
-  let e ← whnf (← instantiateMVars e)
-  let eTy ← withReducible <| whnf (← inferType e)
+  let e ← instantiateMVars (← whnf e)
+  let eTy ← whnfR (← inferType e)
   if eTy.isAppOfArity ``QQ 1 then
     if let some e' := (← get).exprSubst.find? e then
       return e'
+    if e.getAppFn.isMVar then
+      let e' ← mkFreshExprMVar eTy
+      if ← isDefEq e e' then
+        return ← unquoteExprMVar e'.mvarId!
     let ty ← unquoteExpr (eTy.getArg! 0)
     let fvarId := FVarId.mk (← mkFreshId)
     let name ← mkAbstractedName e
@@ -189,23 +252,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
 
 end
 
-def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
-  let .cdecl aIdx aFVarId aUserName aType _ aKind ← a.getDecl | return none
-  let bFVars := (← b.collectFVars.run {}).2
-  let toRevert := (← collectForwardDeps #[.fvar a] (preserveOrder := true)).map (·.fvarId!)
-  for y in toRevert do if bFVars.fvarSet.contains y then return none
-  let oldLCtx ← getLCtx
-  let newLCtx := toRevert.foldl (init := oldLCtx) (·.erase ·)
-  let newLCtx := newLCtx.addDecl <| .ldecl aIdx aFVarId aUserName aType b (nonDep := false) aKind
-  let newLCtx := toRevert.filter (· != a) |>.foldl (init := newLCtx) (·.addDecl <| oldLCtx.get! ·)
-  return newLCtx
-
-def makeDefEq (a b : Expr) : MetaM (Option LocalContext) := do
-  if let .fvar a ← whnf a then if let some lctx ← makeZetaReduce a b then return lctx
-  if let .fvar b ← whnf b then if let some lctx ← makeZetaReduce b a then return lctx
-  return none
-
-def unquoteLCtx : UnquoteM Unit := do
+partial def unquoteLCtx : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
@@ -260,7 +307,10 @@ def isLevelFVar (n : Name) : MetaM (Option Expr) := do
 def quoteLevel : Level → QuoteM Expr
   | .zero => return mkConst ``Level.zero
   | .succ u => return mkApp (mkConst ``Level.succ) (← quoteLevel u)
-  | l@(Level.mvar ..) => throwError "level mvars not supported {l}"
+  | l@(.mvar ..) => do
+    if let some e := (← read).levelBackSubst.find? l then
+      return e
+    throwError "cannot quote level mvar {l}"
   | .max a b => return mkApp2 (mkConst ``Level.max) (← quoteLevel a) (← quoteLevel b)
   | .imax a b => return mkApp2 (mkConst ``Level.imax) (← quoteLevel a) (← quoteLevel b)
   | l@(.param n) => do
@@ -285,7 +335,9 @@ partial def quoteExpr : Expr → QuoteM Expr
     match r with
     | .quoted r => return r
     | .unquoted r => quoteExpr r
-  | e@(.mvar ..) => throwError "resulting term contains metavariable {e}"
+  | e@(.mvar ..) => do
+    if let some (.quoted r) := (← read).exprBackSubst.find? e then return r
+    throwError "resulting term contains metavariable {e}"
   | .sort u => return mkApp (mkConst ``Expr.sort) (← quoteLevel u)
   | .const n ls => return mkApp2 (mkConst ``Expr.const) (toExpr n) (← quoteLevelList ls)
   | e@(.app _ _) => do
@@ -309,78 +361,57 @@ partial def quoteExpr : Expr → QuoteM Expr
   | .proj n i e => return mkApp3 (mkConst ``Expr.proj) (toExpr n) (toExpr i) (← quoteExpr e)
   | .mdata _ e => quoteExpr e
 
-def unquoteMVars (mvars : Array MVarId) : UnquoteM (HashMap MVarId Expr × HashMap MVarId (QuoteM Expr)) := do
-  let mut exprMVarSubst : HashMap MVarId Expr := HashMap.empty
-  let mut mvarSynth : HashMap MVarId (QuoteM Expr) := {}
+def unquoteMVarCore (mvarId : MVarId) : UnquoteM Unit := do
+  have mvar := .mvar mvarId
+  let ty ← instantiateMVars (← whnfR (← inferType mvar))
+  if ty.isAppOf ``QQ then
+    _ ← unquoteExprMVar mvarId
+  else if ty.isAppOf ``Level then
+    _ ← unquoteLevelMVar mvarId
+  else if ty.isSort then
+    let newMVar ← withUnquotedLCtx do mkFreshTypeMVar
+    modify fun s => { s with
+      exprSubst := s.exprSubst.insert mvar newMVar
+      exprBackSubst := s.exprBackSubst.insert newMVar (.quoted mvar)
+      mvars := (mvar.mvarId!, .type newMVar.mvarId!) :: s.mvars
+    }
+  else
+    throwError "unsupported expected type for quoted expression{indentExpr ty}"
 
+def unquoteMVar (mvar : Expr) : UnquoteM Unit := do
   unquoteLCtx
+  unquoteMVarCore mvar.mvarId!
 
-  let lctx ← getLCtx
-  for mvar in mvars do
-    let mdecl := (← getMCtx).getDecl mvar
-    if !(lctx.isSubPrefixOf mdecl.lctx && mdecl.lctx.isSubPrefixOf lctx) then
-      throwError "incompatible metavariable {mvar.name}\n{MessageData.ofGoal mvar}"
+def MVarSynth.isAssigned : MVarSynth → MetaM Bool
+  | .term _ newMVar => newMVar.isAssigned
+  | .type newMVar => newMVar.isAssigned
+  | .level newMVar => isLevelMVarAssigned newMVar
 
-    let ty ← withReducible <| whnf mdecl.type
-    let ty ← instantiateMVars ty
-    if ty.isAppOf ``QQ then
-      let et := ty.getArg! 0
-      let newET ← unquoteExpr et
-      let newLCtx := (← get).unquoted
-      let newLocalInsts ← determineLocalInstances newLCtx
-      let newMVar ← mkFreshExprMVarAt newLCtx newLocalInsts newET
-      modify fun s => { s with exprSubst := s.exprSubst.insert (mkMVar mvar) newMVar }
-      exprMVarSubst := exprMVarSubst.insert mvar newMVar
-      mvarSynth := mvarSynth.insert mvar do
-        return mkApp2 (mkConst ``QQ.qq) et (← quoteExpr (← instantiateMVars newMVar))
-    else if ty.isSort then
-      let u ← mkFreshLevelMVar
-      let newLCtx := (← get).unquoted
-      let newLocalInsts ← determineLocalInstances newLCtx
-      let newMVar ← mkFreshExprMVarAt newLCtx newLocalInsts (mkSort u)
-      modify fun s => { s with exprSubst := s.exprSubst.insert (mkMVar mvar) newMVar }
-      exprMVarSubst := exprMVarSubst.insert mvar newMVar
-      mvarSynth := mvarSynth.insert mvar do
-        return mkApp (mkConst ``QQ) (← quoteExpr (← instantiateMVars newMVar))
-    else if ty.isAppOf ``Level then
-      let newMVar ← mkFreshLevelMVar
-      modify fun s => { s with levelSubst := s.levelSubst.insert (mkMVar mvar) newMVar }
-      mvarSynth := mvarSynth.insert mvar do
-        quoteLevel (← instantiateLevelMVars newMVar)
-    else
-      throwError "unsupported type {ty}"
-
-  return (exprMVarSubst, mvarSynth)
+def MVarSynth.synth : MVarSynth → QuoteM Expr
+  | .term et newMVar => return mkApp2 (mkConst ``QQ.qq) et (← quoteExpr (← instantiateMVars (.mvar newMVar)))
+  | .type newMVar => return mkApp (mkConst ``QQ) (← quoteExpr (← instantiateMVars (.mvar newMVar)))
+  | .level newMVar => do quoteLevel (← instantiateLevelMVars (.mvar newMVar))
 
 def lctxHasMVar : MetaM Bool := do
   (← getLCtx).anyM fun decl => return (← instantiateLocalDeclMVars decl).hasExprMVar
-
-partial def getMVars' (e : Expr) : MetaM (Array MVarId) := go e {}
-  where
-    go (e : Expr) (mvars : Array MVarId) : MetaM (Array MVarId) := do
-      let mut mvars := mvars
-      for mvarId in ← getMVars e do
-        mvars ← go (← inferType (mkMVar mvarId)) mvars
-        unless mvars.contains mvarId do
-          mvars := mvars.push mvarId
-      return mvars
 
 end Impl
 
 open Lean.Elab Lean.Elab.Tactic Lean.Elab.Term Impl
 
 def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
-  let lastId := (← mkFreshExprMVar expectedType).mvarId!
-  let mvars := (← getMVars' expectedType).push lastId
-  let ((exprMVarSubst, mvarSynth), s) ← (unquoteMVars mvars).run {}
+  let mainMVar ← mkFreshExprMVar expectedType
+  let s ← (unquoteMVar mainMVar *> get).run' {}
 
-  let lastId := (exprMVarSubst.find! mvars.back).mvarId!
-  let lastDecl ← Lean.Elab.Term.getMVarDecl lastId
+  have lastId := match s.mvars with
+    | (_, .term _ lastMVar) :: _ | (_, .type lastMVar) :: _ => lastMVar
+    | _ => unreachable!
+  let lastDecl ← lastId.getDecl
 
   withLevelNames s.levelNames do
     try
       withLCtx lastDecl.lctx lastDecl.localInstances do
-        let t ← Lean.Elab.Term.elabTerm t lastDecl.type
+        let t ← Term.elabTerm t lastDecl.type
         let t ← ensureHasType lastDecl.type t
         synthesizeSyntheticMVars false
         if (← logUnassignedUsingErrorInfos (← getMVars t)) then
@@ -392,11 +423,13 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
       throw e
 
     let refdLevels ← do
-      let mut s : CollectLevelParams.State := {}
-      for mvar in mvars do
-        if let some exprMVar := exprMVarSubst.find? mvar then
-          s := s.collect (← instantiateMVars exprMVar)
-      pure s.params
+      let mut lvls : CollectLevelParams.State := {}
+      for (_, synth) in s.mvars do
+        match synth with
+        | .term _ exprMVar | .type exprMVar =>
+          lvls := lvls.collect (← instantiateMVars (.mvar exprMVar))
+        | _ => pure ()
+      pure lvls.params
 
     for newLevelName in (← getLevelNames) do
       if let some fvar ← isLevelFVar newLevelName then
@@ -407,12 +440,13 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
       else
         throwError "unbound level param {newLevelName}"
 
-  for mvar in mvars do
-    let some synth := mvarSynth.find? mvar | pure ()
+  for (mvar, synth) in s.mvars.reverse do
     let mvar := mkMVar mvar
-    let (true) ← isDefEq mvar (← synth s) | throwError "cannot assign metavariable {mvar}"
+    if ← synth.isAssigned then
+      unless ← isDefEq mvar (← synth.synth s) do
+        throwError "cannot assign metavariable {mvar}"
 
-  instantiateMVars (mkMVar mvars.back)
+  instantiateMVars mainMVar
 
 scoped syntax "q(" term Parser.Term.optType ")" : term
 

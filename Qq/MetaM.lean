@@ -42,6 +42,11 @@ inductive MaybeDefEq {α : Q(Sort $u)} (a b : Q($α)) where
   | defEq : QE a b → MaybeDefEq a b
   | notDefEq : MaybeDefEq a b
 
+instance : Repr (MaybeDefEq a b) where
+  reprPrec := fun
+    | .defEq _, prec => Repr.addAppParen "defEq _" prec
+    | .notDefEq, _ => "notDefEq"
+
 def isDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (MaybeDefEq a b) := do
   if ← isDefEq a b then
     return .defEq ⟨⟩
