@@ -399,6 +399,14 @@ end Impl
 
 open Lean.Elab Lean.Elab.Tactic Lean.Elab.Term Impl
 
+@[specialize]
+def withProcessPostponed [Monad m] [MonadFinally m] [MonadLiftT MetaM m] (k : m α) : m α := do
+  let postponed ← getResetPostponed
+  try
+    k <* discard (processPostponed (mayPostpone := false) (exceptionOnFailure := true))
+  finally
+    setPostponed (postponed ++ (← getPostponed))
+
 def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let mainMVar ← mkFreshExprMVar expectedType
   let s ← (unquoteMVar mainMVar *> get).run' {}
@@ -410,10 +418,13 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
 
   withLevelNames s.levelNames do
     try
+      withRef t do
       withLCtx lastDecl.lctx lastDecl.localInstances do
+      withProcessPostponed do
+      withSynthesize do
         let t ← Term.elabTerm t lastDecl.type
         let t ← ensureHasType lastDecl.type t
-        synthesizeSyntheticMVars false
+        synthesizeSyntheticMVars (mayPostpone := false)
         if (← logUnassignedUsingErrorInfos (← getMVars t)) then
           throwAbortTerm
         lastId.assign t
@@ -443,8 +454,9 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   for (mvar, synth) in s.mvars.reverse do
     let mvar := mkMVar mvar
     if ← synth.isAssigned then
-      unless ← isDefEq mvar (← synth.synth s) do
-        throwError "cannot assign metavariable {mvar}"
+      let t ← synth.synth s
+      unless ← isDefEq mvar t do
+        throwError "cannot assign metavariable ({mvar} : {← inferType mvar}) with {t}"
 
   instantiateMVars mainMVar
 

@@ -232,7 +232,8 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q($m $γ) := alt
-  makeMatchCode q(‹_›) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
+  by exact
+  makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
     return QQ.qq (← elabTerm body expectedType)
 
 scoped syntax "_qq_match" term " ← " term " | " doSeq : term
