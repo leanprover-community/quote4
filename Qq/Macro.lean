@@ -38,6 +38,8 @@ structure UnquoteState where
 
   levelNames : List Name := []
 
+  mayPostpone : Bool
+
 abbrev UnquoteM := StateT UnquoteState MetaM
 
 abbrev QuoteM := ReaderT UnquoteState MetaM
@@ -120,7 +122,8 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   else if e.isAppOfArity ``Level.param 1 then return mkLevelParam (← reduceEval (e.getArg! 0))
   else if e.isAppOfArity ``Level.mvar 1 then return mkLevelMVar (← reduceEval (e.getArg! 0))
   else
-    if e.getAppFn.isMVar then
+    if let .mvar mvarId := e.getAppFn then
+      if !(← mvarId.isAssignable) && (← get).mayPostpone then Elab.throwPostpone
       let e' ← mkFreshExprMVar (mkConst ``Level)
       if ← isDefEq e e' then
         return ← unquoteLevelMVar e'.mvarId!
@@ -207,10 +210,14 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if eTy.isAppOfArity ``QQ 1 then
     if let some e' := (← get).exprSubst.find? e then
       return e'
-    if e.getAppFn.isMVar then
-      let e' ← mkFreshExprMVar eTy
-      if ← isDefEq e e' then
-        return ← unquoteExprMVar e'.mvarId!
+    if let .mvar mvarId := e.getAppFn then
+      if !(← mvarId.isAssignable) then
+        if (← get).mayPostpone then
+          Elab.throwPostpone
+      else
+        let e' ← mkFreshExprMVar eTy
+        if ← isDefEq e e' then
+          return ← unquoteExprMVar e'.mvarId!
     let ty ← unquoteExpr (eTy.getArg! 0)
     let fvarId := FVarId.mk (← mkFreshId)
     let name ← mkAbstractedName e
@@ -409,7 +416,7 @@ def withProcessPostponed [Monad m] [MonadFinally m] [MonadLiftT MetaM m] (k : m 
 
 def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let mainMVar ← mkFreshExprMVar expectedType
-  let s ← (unquoteMVar mainMVar *> get).run' {}
+  let s ← (unquoteMVar mainMVar *> get).run' { mayPostpone := (← read).mayPostpone }
 
   have lastId := match s.mvars with
     | (_, .term _ lastMVar) :: _ | (_, .type lastMVar) :: _ => lastMVar

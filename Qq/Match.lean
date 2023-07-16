@@ -114,7 +114,7 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLi
       q(if $(mkIsDefEqResultVal decls fv) then
           $(← mkQqLets nextDecls fv do
             let pat : Q(QQ $ty) := QQ.qq' $ replaceTempExprsByQVars decls pat
-            let (_, s) ← unquoteLCtx.run {}
+            let (_, s) ← unquoteLCtx.run { mayPostpone := (← read).mayPostpone }
             let _discr' ← (unquoteExpr discr).run' s
             let _pat' ← (unquoteExpr pat).run' s
             withLocalDeclDQ (← mkFreshUserName `match_eq) q(QE $discr $pat) fun h => do
@@ -210,7 +210,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let e' ← elabTermEnsuringTypeQ e q(QQ $argTyExpr)
   let argTyExpr ← instantiateMVarsQ argTyExpr
 
-  let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run {}
+  let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run { mayPostpone := (← read).mayPostpone }
   let (pat, patVarDecls, newLevels) ← elabPat pat lctx localInsts type s.levelNames
 
   let mut s := s

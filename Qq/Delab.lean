@@ -29,7 +29,7 @@ def checkQqDelabOptions : DelabM Unit := do
 
 def delabQuoted : Delab := do
   let e ← getExpr
-  let ((newE, newLCtx), _) ← failureOnError $ (unquote e).run {}
+  let ((newE, newLCtx), _) ← failureOnError $ (unquote e).run { mayPostpone := false }
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
     withTheReader SubExpr (fun s => { s with expr := newE }) delab
 

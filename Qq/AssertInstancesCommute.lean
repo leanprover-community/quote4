@@ -31,7 +31,7 @@ def findRedundantLocalInstQuoted? :
     if ty.isAppOf ``QQ then
       if (← instantiateMVars ty.appArg!).hasExprMVar then
         tryPostpone
-  StateT.run' (m := MetaM) (s := {}) do
+  StateT.run' (m := MetaM) (s := { mayPostpone := (← read).mayPostpone }) do
   unquoteLCtx
   (← findRedundantLocalInst?).mapM fun (fvar, inst) => do
   let ty ← withUnquotedLCtx do inferType (.fvar fvar)
