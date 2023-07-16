@@ -468,6 +468,7 @@ elab_rules : term <= expectedType
   | `(q($t)) => do
     let expectedType ← instantiateMVars expectedType
     if expectedType.hasExprMVar then tryPostpone
+    if ← lctxHasMVar then tryPostpone
     ensureHasType expectedType $ ← commitIfDidNotPostpone do
       let mut expectedType ← withReducible <| Impl.whnf expectedType
       if !expectedType.isAppOfArity ``QQ 1 then

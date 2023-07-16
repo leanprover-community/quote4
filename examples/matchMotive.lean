@@ -3,7 +3,7 @@ open Qq Lean
 
 open Elab Term in
 elab tk:"showTerm" t:term : term <= expectedType => do
-  let t' ← elabTerm t expectedType
+  let t' ← withSynthesize do elabTerm t expectedType
   logAt tk t' (severity := MessageSeverity.information)
   return t'
 
