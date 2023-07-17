@@ -18,8 +18,11 @@ inductive MVarSynth
   | level (unquotedMVar : LMVarId) --> Level
 
 structure UnquoteState where
-  /-- Quoted mvars in the outside lctx (of type `Level`, `QQ _`, or `Type`) -/
-  mvars : List (MVarId × MVarSynth) := []
+  /--
+  Quoted mvars in the outside lctx (of type `Level`, `QQ _`, or `Type`).
+  The outside mvars can also be of the form `?m x y z`.
+  -/
+  mvars : List (Expr × MVarSynth) := []
 
   /- Maps quoted expressions (of type Level) in the old context to level parameter names in the new context -/
   levelSubst : HashMap Expr Level := {}
@@ -93,6 +96,12 @@ def addSyntaxDollar : Syntax → Syntax
 def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   return e.getAppFn.constName?.getD `udummy ++ (← mkFreshId)
 
+def isAssignablePattern (e : Expr) : MetaM Bool := do
+  let e ← instantiateMVars (← whnf e)
+  let .mvar mvarId := e.getAppFn | return false
+  unless ← mvarId.isAssignable do return false
+  return e.getAppArgs.all (·.isFVar) && e.getAppArgs.allDiff
+
 def isBad (e : Expr) : Bool := Id.run do
   if let .const (.str _ "rec") _ := e.getAppFn then
     return true
@@ -122,11 +131,10 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   else if e.isAppOfArity ``Level.param 1 then return mkLevelParam (← reduceEval (e.getArg! 0))
   else if e.isAppOfArity ``Level.mvar 1 then return mkLevelMVar (← reduceEval (e.getArg! 0))
   else
-    if let .mvar mvarId := e.getAppFn then
-      if !(← mvarId.isAssignable) && (← get).mayPostpone then Elab.throwPostpone
-      let e' ← mkFreshExprMVar (mkConst ``Level)
-      if ← isDefEq e e' then
-        return ← unquoteLevelMVar e'.mvarId!
+    if ← isAssignablePattern e then
+      return ← unquoteLevelMVar e
+    if (← get).mayPostpone && e.getAppFn.isMVar then
+      Elab.throwPostpone
     let name ← mkAbstractedLevelName e
     let l := mkLevelParam name
     modify fun s => { s with
@@ -135,11 +143,11 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
     }
     pure l
 
-partial def unquoteLevelMVar (mvar : MVarId) : UnquoteM Level := do
+partial def unquoteLevelMVar (mvar : Expr) : UnquoteM Level := do
   let newMVar ← mkFreshLevelMVar
   modify fun s => { s with
-    levelSubst := s.levelSubst.insert (.mvar mvar) newMVar
-    levelBackSubst := s.levelBackSubst.insert newMVar (.mvar mvar)
+    levelSubst := s.levelSubst.insert mvar newMVar
+    levelBackSubst := s.levelBackSubst.insert newMVar mvar
     mvars := (mvar, .level newMVar.mvarId!) :: s.mvars
   }
   return newMVar
@@ -188,8 +196,7 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
   else
     throwFailedToEval e
 
-partial def unquoteExprMVar (mvarId : MVarId) : UnquoteM Expr := do
-  have mvar := .mvar mvarId
+partial def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
   unless ty.isAppOf ``QQ do throwError "not of type Q(_):{indentExpr ty}"
   have et := ty.getArg! 0
@@ -198,7 +205,7 @@ partial def unquoteExprMVar (mvarId : MVarId) : UnquoteM Expr := do
   modify fun s => { s with
     exprSubst := s.exprSubst.insert mvar newMVar
     exprBackSubst := s.exprBackSubst.insert newMVar (.quoted mvar)
-    mvars := (mvarId, .term et newMVar.mvarId!) :: s.mvars
+    mvars := (mvar, .term et newMVar.mvarId!) :: s.mvars
   }
   return newMVar
 
@@ -210,14 +217,10 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if eTy.isAppOfArity ``QQ 1 then
     if let some e' := (← get).exprSubst.find? e then
       return e'
-    if let .mvar mvarId := e.getAppFn then
-      if !(← mvarId.isAssignable) then
-        if (← get).mayPostpone then
-          Elab.throwPostpone
-      else
-        let e' ← mkFreshExprMVar eTy
-        if ← isDefEq e e' then
-          return ← unquoteExprMVar e'.mvarId!
+    if ← isAssignablePattern e then
+      return ← unquoteExprMVar e
+    if (← get).mayPostpone && e.getAppFn.isMVar then
+      Elab.throwPostpone
     let ty ← unquoteExpr (eTy.getArg! 0)
     let fvarId := FVarId.mk (← mkFreshId)
     let name ← mkAbstractedName e
@@ -368,26 +371,25 @@ partial def quoteExpr : Expr → QuoteM Expr
   | .proj n i e => return mkApp3 (mkConst ``Expr.proj) (toExpr n) (toExpr i) (← quoteExpr e)
   | .mdata _ e => quoteExpr e
 
-def unquoteMVarCore (mvarId : MVarId) : UnquoteM Unit := do
-  have mvar := .mvar mvarId
+def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
   if ty.isAppOf ``QQ then
-    _ ← unquoteExprMVar mvarId
+    _ ← unquoteExprMVar mvar
   else if ty.isAppOf ``Level then
-    _ ← unquoteLevelMVar mvarId
+    _ ← unquoteLevelMVar mvar
   else if ty.isSort then
     let newMVar ← withUnquotedLCtx do mkFreshTypeMVar
     modify fun s => { s with
       exprSubst := s.exprSubst.insert mvar newMVar
       exprBackSubst := s.exprBackSubst.insert newMVar (.quoted mvar)
-      mvars := (mvar.mvarId!, .type newMVar.mvarId!) :: s.mvars
+      mvars := (mvar, .type newMVar.mvarId!) :: s.mvars
     }
   else
     throwError "unsupported expected type for quoted expression{indentExpr ty}"
 
 def unquoteMVar (mvar : Expr) : UnquoteM Unit := do
   unquoteLCtx
-  unquoteMVarCore mvar.mvarId!
+  unquoteMVarCore mvar
 
 def MVarSynth.isAssigned : MVarSynth → MetaM Bool
   | .term _ newMVar => newMVar.isAssigned
@@ -459,7 +461,6 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
         throwError "unbound level param {newLevelName}"
 
   for (mvar, synth) in s.mvars.reverse do
-    let mvar := mkMVar mvar
     if ← synth.isAssigned then
       let t ← synth.synth s
       unless ← isDefEq mvar t do
