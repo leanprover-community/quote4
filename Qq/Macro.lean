@@ -463,6 +463,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
     if ← synth.isAssigned then
       let t ← synth.synth s
       unless ← isDefEq mvar t do
+        tryPostpone
         throwError "cannot assign metavariable ({mvar} : {← inferType mvar}) with {t}"
 
   instantiateMVars mainMVar
