@@ -100,6 +100,7 @@ def isAssignablePattern (e : Expr) : MetaM Bool := do
   let e ← instantiateMVars (← whnf e)
   let .mvar mvarId := e.getAppFn | return false
   unless ← mvarId.isAssignable do return false
+  if (← mvarId.getKind) matches .synthetic then return false
   return e.getAppArgs.all (·.isFVar) && e.getAppArgs.allDiff
 
 def isBad (e : Expr) : Bool := Id.run do
