@@ -263,11 +263,37 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
 
 end
 
-partial def unquoteLCtx : UnquoteM Unit := do
+def substLevel (a : Name) (b : Level) : UnquoteM Unit :=
+  modify fun s => { s with
+    levelSubst := .ofList <| s.levelSubst.toList
+      |>.map fun (x, u) => (x, u.instantiateParams [a] [b])
+  }
+
+def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
     let whnfTy ← withReducible <| whnf ty
+    if whnfTy.isAppOfArity ``Level 0 then
+      modify fun s => { s with
+        levelNames := ldecl.userName :: s.levelNames
+        levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
+      }
+    else if let .app (.app (.const ``QuotedLevelDefEq ..) u) v := whnfTy then
+      let u' ← unquoteLevel u
+      let v' ← unquoteLevel v
+      if addDefEqs then
+        if let .param n := u' then if !u'.occurs v' then substLevel n v'; continue
+        if let .param n := v' then if !v'.occurs u' then substLevel n u'; continue
+
+def unquoteLCtx : UnquoteM Unit := do
+  unquoteLevelLCtx
+  for ldecl in (← getLCtx) do
+    let fv := ldecl.toExpr
+    let ty := ldecl.type
+    let whnfTy ← withReducible <| whnf ty
+    if whnfTy.isAppOfArity ``QuotedLevelDefEq 2 || whnfTy.isAppOfArity ``Level 0 then
+      pure () -- see above
     if whnfTy.isAppOfArity ``Quoted 1 then
       let qTy := whnfTy.appArg!
       let newTy ← unquoteExpr qTy
@@ -291,11 +317,6 @@ partial def unquoteLCtx : UnquoteM Unit := do
         unquoted
         exprBackSubst := s.exprBackSubst.insert fv (.unquoted (mkApp2 (.const ``Eq.refl [tyLevel]) ty lhs))
         -- exprSubst := s.exprSubst.insert fv fv
-      }
-    else if whnfTy.isAppOfArity ``Level 0 then
-      modify fun s => { s with
-        levelNames := ldecl.userName :: s.levelNames
-        levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
       }
     else
       let .succ u ← getLevel ty | pure ()
@@ -417,6 +438,24 @@ def withProcessPostponed [Monad m] [MonadFinally m] [MonadLiftT MetaM m] (k : m 
   finally
     setPostponed (postponed ++ (← getPostponed))
 
+def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α × Array Name)) : TermElabM α := do
+  Term.withLevelNames s.levelNames do
+    let (res, refdLevels) ← try k catch e =>
+      if let some n := isAutoBoundImplicitLocalException? e then
+        throwError "unsupported implicit auto-bound: {n} is not a level name"
+      throw e
+
+    for newLevelName in (← getLevelNames) do
+      if let some fvar ← isLevelFVar newLevelName then
+        if refdLevels.contains newLevelName then
+          addTermInfo' (← getRef) fvar
+      else if (← read).autoBoundImplicit then
+        throwAutoBoundImplicitLocal newLevelName
+      else
+        throwError "unbound level param {newLevelName}"
+
+    return res
+
 def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let mainMVar ← mkFreshExprMVar expectedType
   let s ← (unquoteMVar mainMVar *> get).run' { mayPostpone := (← read).mayPostpone }
@@ -426,22 +465,15 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
     | _ => unreachable!
   let lastDecl ← lastId.getDecl
 
-  withLevelNames s.levelNames do
-    try
-      withRef t do
-      withLCtx lastDecl.lctx lastDecl.localInstances do
-      withProcessPostponed do
-      withSynthesize do
-        let t ← Term.elabTerm t lastDecl.type
-        let t ← ensureHasType lastDecl.type t
-        synthesizeSyntheticMVars (mayPostpone := false)
-        if (← logUnassignedUsingErrorInfos (← getMVars t)) then
-          throwAbortTerm
-        lastId.assign t
-    catch e =>
-      if let some n := isAutoBoundImplicitLocalException? e then
-        throwError "unsupported implicit auto-bound: {n} is not a level name"
-      throw e
+  withRef t do s.withLevelNames do
+    withLCtx lastDecl.lctx lastDecl.localInstances do
+      withProcessPostponed do withSynthesize do
+      let t ← Term.elabTerm t lastDecl.type
+      let t ← ensureHasType lastDecl.type t
+      synthesizeSyntheticMVars (mayPostpone := false)
+      if (← logUnassignedUsingErrorInfos (← getMVars t)) then
+        throwAbortTerm
+      lastId.assign t
 
     let refdLevels ← do
       let mut lvls : CollectLevelParams.State := {}
@@ -452,14 +484,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
         | _ => pure ()
       pure lvls.params
 
-    for newLevelName in (← getLevelNames) do
-      if let some fvar ← isLevelFVar newLevelName then
-        if refdLevels.contains newLevelName then
-          addTermInfo' t fvar
-      else if (← read).autoBoundImplicit then
-        throwAutoBoundImplicitLocal newLevelName
-      else
-        throwError "unbound level param {newLevelName}"
+    return ((), refdLevels)
 
   for (mvar, synth) in s.mvars.reverse do
     if ← synth.isAssigned then
@@ -503,6 +528,19 @@ elab_rules : term <= expectedType
 
 /-- `a =Q b` says that `a` and `b` are definitionally equal. -/
 scoped notation a:50 " =Q " b:51 => QuotedDefEq q(a) q(b)
+
+/-- `ql(u)` quotes the universe level `u`. -/
+scoped elab "ql(" l:level ")" : term => do
+  let ((), s) ← unquoteLevelLCtx.run {mayPostpone := false}
+  let l ← s.withLevelNames do
+    let l ← elabLevel l
+    let refdLevels := (CollectLevelParams.collect (← instantiateLevelMVars l) {}).params
+    return (l, refdLevels)
+  quoteLevel l s
+
+/-- `a =QL b` says that the levels `a` and `b` are definitionally equal. -/
+scoped syntax atomic(level " =QL ") level : term
+macro_rules | `($a:level =QL $b) => `(QuotedLevelDefEq ql($a) ql($b))
 
 namespace Impl
 

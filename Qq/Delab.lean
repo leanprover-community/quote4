@@ -33,6 +33,14 @@ def delabQuoted : Delab := do
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
     withTheReader SubExpr (fun s => { s with expr := newE }) delab
 
+def delabQuotedLevel : DelabM Syntax.Level := do
+  let e ← getExpr
+  let (newE, _) ← failureOnError do
+    StateT.run (s := { mayPostpone := false }) do
+      unquoteLevelLCtx (addDefEqs := false)
+      unquoteLevel e
+  return newE.quote max_prec
+
 @[delab app.Qq.Quoted]
 def delabQ : Delab := do
   guard $ (← getExpr).getAppNumArgs == 1
@@ -54,3 +62,11 @@ def delabQuotedDefEq : Delab := do
   let lhs ← withAppFn do withAppArg delabQuoted
   let rhs ← withAppArg delabQuoted
   `($lhs =Q $rhs)
+
+@[delab app.Qq.QuotedLevelDefEq]
+def delabQuotedLevelDefEq : Delab := do
+  guard $ (← getExpr).getAppNumArgs == 2
+  checkQqDelabOptions
+  let lhs ← withAppFn do withAppArg delabQuotedLevel
+  let rhs ← withAppArg delabQuotedLevel
+  `($lhs:level =QL $rhs:level)

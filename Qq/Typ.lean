@@ -37,7 +37,16 @@ protected abbrev Quoted.ty (t : Quoted α) : Expr := α
 
 You should usually write this using the notation `$lhs =Q $rhs`.
 -/
-structure QuotedDefEq {α : Quoted (.sort u)} (lhs rhs : Quoted α) : Prop
+structure QuotedDefEq {α : Quoted (.sort u)} (lhs rhs : Quoted α) : Prop :=
+  unsafeIntro ::
+
+/--
+`QuotedLevelDefEq u v` says that the levels `u` and `v` are definitionally equal.
+
+You should usually write this using the notation `$u =QL $v`.
+-/
+structure QuotedLevelDefEq (u v : Level) : Prop :=
+  unsafeIntro ::
 
 open Meta in
 protected def Quoted.check (e : Quoted α) : MetaM Unit := do
@@ -51,4 +60,9 @@ protected def QuotedDefEq.check (e : @QuotedDefEq u α lhs rhs) : MetaM Unit := 
   lhs.check
   rhs.check
   unless ← isDefEq lhs rhs do
+    throwError "{lhs} and {rhs} are not defeq"
+
+open Meta in
+protected def QuotedLevelDefEq.check (e : QuotedLevelDefEq lhs rhs) : MetaM Unit := do
+  unless ← isLevelDefEq lhs rhs do
     throwError "{lhs} and {rhs} are not defeq"
