@@ -24,7 +24,7 @@ def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
   return none
 
 def findRedundantLocalInstQuoted? :
-    TermElabM (Option (FVarId × (u : Q(Level)) × (ty : Q(Quoted (mkSort $u))) × Q(Quoted $ty) × Q(Quoted $ty))) := do
+    TermElabM (Option (FVarId × (u : Q(Level)) × (ty : Q(Quoted (.sort $u))) × Q(Quoted $ty) × Q(Quoted $ty))) := do
   for ldecl in ← getLCtx do
     let ty ← whnfR ldecl.type
     if ty.isMVar then tryPostpone

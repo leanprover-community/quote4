@@ -27,7 +27,7 @@ def PatVarDecl.fvarTy : PatVarDecl → Q(Type)
   | { ty := some _, .. } => q(Expr)
 
 def PatVarDecl.fvar (decl : PatVarDecl) : Q($((decl.fvarTy))) :=
-  mkFVar decl.fvarId
+  Expr.fvar decl.fvarId
 
 def mkIsDefEqType : List PatVarDecl → Q(Type)
   | [] => q(Bool)
@@ -84,7 +84,7 @@ def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : MetaM Q(MetaM $(
 def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLiftT MetaM m] [MonadLCtx m]
     (fvarId : FVarId) (userName : Name) (val : (Quoted α)) (k : (Quoted α) → m (Quoted β)) : m (Quoted β) := do
   withExistingLocalDecls [LocalDecl.cdecl (← getLCtx).decls.size fvarId userName α .default .default] do
-    return Quoted.unsafeMk $ ← mkLet' userName (mkFVar fvarId) α val (← k (mkFVar fvarId))
+    return Quoted.unsafeMk $ ← mkLet' userName (.fvar fvarId) α val (← k (.fvar fvarId))
 
 def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
     TermElabM Q($γ) → TermElabM Q($γ)
@@ -98,12 +98,12 @@ def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType de
 def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
   | [], e => e
   | { ty := some _, fvarId, .. } :: decls, e =>
-    ((replaceTempExprsByQVars decls e).abstract #[mkFVar fvarId]).instantiate #[mkFVar fvarId]
+    ((replaceTempExprsByQVars decls e).abstract #[.fvar fvarId]).instantiate #[.fvar fvarId]
   | { ty := none, .. } :: decls, e =>
     replaceTempExprsByQVars decls e
 
 def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLiftT MetaM $m)) (_instBind : Q(Bind $m))
-    (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(Quoted (mkSort $uTy)))
+    (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(Quoted (.sort $uTy)))
     (pat discr : Q(Quoted $ty)) (alt : Q($m $γ)) (expectedType : Expr)
     (k : Expr → TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
   let nextDecls : List PatVarDecl :=
@@ -186,7 +186,7 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
             let type ← inferType mvar
             newDecls := newDecls.push $
               LocalDecl.cdecl default fvarId patVar type .default .default
-            mvar.mvarId!.assign (mkFVar fvarId)
+            mvar.mvarId!.assign (.fvar fvarId)
 
           for newMVar in ← getMVars pat do
             let fvarId := FVarId.mk (← mkFreshId)
@@ -194,7 +194,7 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
             let userName ← mkFreshBinderName
             newDecls := newDecls.push $
               LocalDecl.cdecl default fvarId userName type .default .default
-            newMVar.assign (mkFVar fvarId)
+            newMVar.assign (.fvar fvarId)
 
           withExistingLocalDecls newDecls.toList do
             return (← instantiateMVars pat,
@@ -206,7 +206,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let alt ← elabTermEnsuringType alt expectedType
 
   let argLvlExpr ← mkFreshExprMVarQ q(Level)
-  let argTyExpr ← mkFreshExprMVarQ q(Quoted (mkSort $argLvlExpr))
+  let argTyExpr ← mkFreshExprMVarQ q(Quoted (.sort $argLvlExpr))
   let e' ← elabTermEnsuringTypeQ e q(Quoted $argTyExpr)
   let argTyExpr ← instantiateMVarsQ argTyExpr
 
@@ -218,7 +218,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   for newLevel in newLevels do
     let fvarId := FVarId.mk (← mkFreshId)
     oldPatVarDecls := oldPatVarDecls ++ [{ ty := none, fvarId := fvarId, userName := newLevel }]
-    s := { s with levelBackSubst := s.levelBackSubst.insert (mkLevelParam newLevel) (mkFVar fvarId) }
+    s := { s with levelBackSubst := s.levelBackSubst.insert (.param newLevel) (.fvar fvarId) }
 
   for ldecl in patVarDecls do
     let qty ← (quoteExpr ldecl.type).run s

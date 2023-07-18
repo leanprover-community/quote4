@@ -6,8 +6,8 @@ Type-safe conversion from values of type `Sum α β` to values of type `Sum α (
 -/
 
 def orLevel : (ps : List ((u : Level) × Q(Type u))) → Level
-  | [] => levelZero
-  | ⟨u, _⟩ :: ps => mkLevelMax u (orLevel ps)
+  | [] => .zero
+  | ⟨u, _⟩ :: ps => .max u (orLevel ps)
 
 def or1 : (ps : List ((u : Level) × Q(Type u))) → Q(Type $(orLevel ps))
   | [] => q(Empty)

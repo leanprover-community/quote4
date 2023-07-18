@@ -125,19 +125,19 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   let e ← whnf e
   if let some l := (← get).levelSubst.find? e then
     return l
-  if e.isAppOfArity ``Level.zero 0 then pure levelZero
-  else if e.isAppOfArity ``Level.succ 1 then return mkLevelSucc (← unquoteLevel (e.getArg! 0))
-  else if e.isAppOfArity ``Level.max 2 then return mkLevelMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
-  else if e.isAppOfArity ``Level.imax 2 then return mkLevelIMax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
-  else if e.isAppOfArity ``Level.param 1 then return mkLevelParam (← reduceEval (e.getArg! 0))
-  else if e.isAppOfArity ``Level.mvar 1 then return mkLevelMVar (← reduceEval (e.getArg! 0))
+  if e.isAppOfArity ``Level.zero 0 then pure .zero
+  else if e.isAppOfArity ``Level.succ 1 then return .succ (← unquoteLevel (e.getArg! 0))
+  else if e.isAppOfArity ``Level.max 2 then return .max (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
+  else if e.isAppOfArity ``Level.imax 2 then return .imax (← unquoteLevel (e.getArg! 0)) (← unquoteLevel (e.getArg! 1))
+  else if e.isAppOfArity ``Level.param 1 then return .param (← reduceEval (e.getArg! 0))
+  else if e.isAppOfArity ``Level.mvar 1 then return .mvar (← reduceEval (e.getArg! 0))
   else
     if ← isAssignablePattern e then
       return ← unquoteLevelMVar e
     if (← get).mayPostpone && e.getAppFn.isMVar then
       Elab.throwPostpone
     let name ← mkAbstractedLevelName e
-    let l := mkLevelParam name
+    let l := .param name
     modify fun s => { s with
       levelSubst := s.levelSubst.insert e l
       levelBackSubst := s.levelBackSubst.insert l e
@@ -225,7 +225,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     let ty ← unquoteExpr (eTy.getArg! 0)
     let fvarId := FVarId.mk (← mkFreshId)
     let name ← mkAbstractedName e
-    let fv := mkFVar fvarId
+    let fv := .fvar fvarId
     modify fun s => { s with
       unquoted := s.unquoted.mkLocalDecl fvarId name ty
       exprSubst := s.exprSubst.insert e fv
@@ -238,8 +238,6 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   match c, nargs with
     | ``betaRev', 2 => return betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
     | ``Expr.bvar, 1 => return .bvar (← reduceEval (e.getArg! 0))
-    /- | ``Expr.fvar, 2 => mkFVar (← reduceEval (e.getArg! 0)) -/
-    /- | ``Expr.mvar, 2 => mkMVar (← reduceEval (e.getArg! 0)) -/
     | ``Expr.sort, 1 => return .sort (← unquoteLevel (e.getArg! 0))
     | ``Expr.const, 2 => return .const (← reduceEval (e.getArg! 0)) (← unquoteLevelList (e.getArg! 1))
     | ``Expr.app, 2 => return .app (← unquoteExpr (e.getArg! 0)) (← unquoteExpr (e.getArg! 1))
@@ -277,7 +275,7 @@ def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
     if whnfTy.isAppOfArity ``Level 0 then
       modify fun s => { s with
         levelNames := ldecl.userName :: s.levelNames
-        levelSubst := s.levelSubst.insert fv (mkLevelParam ldecl.userName)
+        levelSubst := s.levelSubst.insert fv (.param ldecl.userName)
       }
     else if let .app (.app (.const ``QuotedLevelDefEq ..) u) v := whnfTy then
       let u' ← unquoteLevel u
@@ -320,10 +318,10 @@ def unquoteLCtx : UnquoteM Unit := do
       }
     else
       let .succ u ← getLevel ty | pure ()
-      let LOption.some inst ← trySynthInstance (mkApp (mkConst ``ToExpr [u]) ty) | pure ()
+      let LOption.some inst ← trySynthInstance (mkApp (.const ``ToExpr [u]) ty) | pure ()
       modify fun s => { s with
         unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
-        exprBackSubst := s.exprBackSubst.insert fv (.quoted (mkApp3 (mkConst ``toExpr [u]) ty inst fv))
+        exprBackSubst := s.exprBackSubst.insert fv (.quoted (mkApp3 (.const ``toExpr [u]) ty inst fv))
         exprSubst := s.exprSubst.insert fv fv
       }
 
@@ -331,20 +329,20 @@ def isLevelFVar (n : Name) : MetaM (Option Expr) := do
   match (← getLCtx).findFromUserName? n with
     | none => pure none
     | some decl =>
-      return if ← isDefEq decl.type (mkConst ``Level) then
+      return if ← isDefEq decl.type (.const ``Level []) then
         some decl.toExpr
       else
         none
 
 def quoteLevel : Level → QuoteM Expr
-  | .zero => return mkConst ``Level.zero
-  | .succ u => return mkApp (mkConst ``Level.succ) (← quoteLevel u)
+  | .zero => return .const ``Level.zero []
+  | .succ u => return mkApp (.const ``Level.succ []) (← quoteLevel u)
   | l@(.mvar ..) => do
     if let some e := (← read).levelBackSubst.find? l then
       return e
     throwError "cannot quote level mvar {l}"
-  | .max a b => return mkApp2 (mkConst ``Level.max) (← quoteLevel a) (← quoteLevel b)
-  | .imax a b => return mkApp2 (mkConst ``Level.imax) (← quoteLevel a) (← quoteLevel b)
+  | .max a b => return mkApp2 (.const ``Level.max []) (← quoteLevel a) (← quoteLevel b)
+  | .imax a b => return mkApp2 (.const ``Level.imax []) (← quoteLevel a) (← quoteLevel b)
   | l@(.param n) => do
     match (← read).levelBackSubst.find? l with
       | some e => return e
@@ -355,13 +353,13 @@ def quoteLevel : Level → QuoteM Expr
             throwError "universe parameter {n} not of type Level"
 
 def quoteLevelList : List Level → QuoteM Expr
-  | [] => return mkApp (mkConst ``List.nil [levelZero]) (mkConst ``Level)
+  | [] => return mkApp (.const ``List.nil [.zero]) (.const ``Level [])
   | l::ls => do
-    return mkApp3 (mkConst ``List.cons [levelZero]) (mkConst ``Level)
+    return mkApp3 (.const ``List.cons [.zero]) (.const ``Level [])
       (← quoteLevel l) (← quoteLevelList ls)
 
 partial def quoteExpr : Expr → QuoteM Expr
-  | .bvar i => return mkApp (mkConst ``Expr.bvar) (toExpr i)
+  | .bvar i => return mkApp (.const ``Expr.bvar []) (toExpr i)
   | e@(.fvar ..) => do
     let some r := (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
     match r with
@@ -370,27 +368,27 @@ partial def quoteExpr : Expr → QuoteM Expr
   | e@(.mvar ..) => do
     if let some (.quoted r) := (← read).exprBackSubst.find? e then return r
     throwError "resulting term contains metavariable {e}"
-  | .sort u => return mkApp (mkConst ``Expr.sort) (← quoteLevel u)
-  | .const n ls => return mkApp2 (mkConst ``Expr.const) (toExpr n) (← quoteLevelList ls)
+  | .sort u => return mkApp (.const ``Expr.sort []) (← quoteLevel u)
+  | .const n ls => return mkApp2 (.const ``Expr.const []) (toExpr n) (← quoteLevelList ls)
   | e@(.app _ _) => do
     let fn ← quoteExpr e.getAppFn
     let args ← e.getAppArgs.mapM quoteExpr
     if e.getAppFn.isFVar then -- TODO make configurable
-      return mkApp2 (mkConst ``betaRev') fn $
-        args.foldl (flip $ mkApp3 (mkConst ``List.cons [levelZero]) (mkConst ``Expr))
-          (mkApp (mkConst ``List.nil [levelZero]) (mkConst ``Expr))
+      return mkApp2 (.const ``betaRev' []) fn $
+        args.foldl (flip $ mkApp3 (.const ``List.cons [.zero]) (.const ``Expr []))
+          (mkApp (.const ``List.nil [.zero]) (.const ``Expr []))
     else
-      pure $ args.foldl (mkApp2 (mkConst ``Expr.app)) fn
+      pure $ args.foldl (mkApp2 (.const ``Expr.app [])) fn
   | .lam n t b d => do
-    return mkApp4 (mkConst ``Expr.lam) (toExpr n.eraseMacroScopes)
+    return mkApp4 (.const ``Expr.lam []) (toExpr n.eraseMacroScopes)
       (← quoteExpr t) (← quoteExpr b) (toExpr d)
   | .forallE n t b d => do
-    return mkApp4 (mkConst ``Expr.forallE) (toExpr $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
+    return mkApp4 (.const ``Expr.forallE []) (toExpr $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
       (← quoteExpr t) (← quoteExpr b) (toExpr d)
   | .letE n t v b d => do
-    return mkApp5 (mkConst ``Expr.letE) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d)
-  | .lit l => return mkApp (mkConst ``Expr.lit) (toExpr l)
-  | .proj n i e => return mkApp3 (mkConst ``Expr.proj) (toExpr n) (toExpr i) (← quoteExpr e)
+    return mkApp5 (.const ``Expr.letE []) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d)
+  | .lit l => return mkApp (.const ``Expr.lit []) (toExpr l)
+  | .proj n i e => return mkApp3 (.const ``Expr.proj []) (toExpr n) (toExpr i) (← quoteExpr e)
   | .mdata _ e => quoteExpr e
 
 def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
@@ -419,8 +417,8 @@ def MVarSynth.isAssigned : MVarSynth → MetaM Bool
   | .level newMVar => isLevelMVarAssigned newMVar
 
 def MVarSynth.synth : MVarSynth → QuoteM Expr
-  | .term et newMVar => return mkApp2 (mkConst ``Quoted.unsafeMk) et (← quoteExpr (← instantiateMVars (.mvar newMVar)))
-  | .type newMVar => return mkApp (mkConst ``Quoted) (← quoteExpr (← instantiateMVars (.mvar newMVar)))
+  | .term et newMVar => return mkApp2 (.const ``Quoted.unsafeMk []) et (← quoteExpr (← instantiateMVars (.mvar newMVar)))
+  | .type newMVar => return mkApp (.const ``Quoted []) (← quoteExpr (← instantiateMVars (.mvar newMVar)))
   | .level newMVar => do quoteLevel (← instantiateLevelMVars (.mvar newMVar))
 
 def lctxHasMVar : MetaM Bool := do
@@ -455,6 +453,19 @@ def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α × Ar
         throwError "unbound level param {newLevelName}"
 
     return res
+
+/-- `ql(u)` quotes the universe level `u`. -/
+scoped elab "ql(" l:level ")" : term => do
+  let ((), s) ← unquoteLevelLCtx.run {mayPostpone := false}
+  let l ← s.withLevelNames do
+    let l ← elabLevel l
+    let refdLevels := (CollectLevelParams.collect (← instantiateLevelMVars l) {}).params
+    return (l, refdLevels)
+  quoteLevel l s
+
+/-- `a =QL b` says that the levels `a` and `b` are definitionally equal. -/
+scoped syntax atomic(level " =QL ") level : term
+macro_rules | `($a:level =QL $b) => `(QuotedLevelDefEq ql($a) ql($b))
 
 def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let mainMVar ← mkFreshExprMVar expectedType
@@ -508,10 +519,10 @@ elab_rules : term <= expectedType
     ensureHasType expectedType $ ← commitIfDidNotPostpone do
       let mut expectedType ← withReducible <| Impl.whnf expectedType
       if !expectedType.isAppOfArity ``Quoted 1 then
-        let u ← mkFreshExprMVar (mkConst ``Level)
-        let u' := mkApp (mkConst ``mkSort) u
-        let t ← mkFreshExprMVar (mkApp (mkConst ``Quoted) u')
-        expectedType := mkApp (mkConst ``Quoted) t
+        let u ← mkFreshExprMVar (some (.const ``Level []))
+        let u' := .app (.const ``Expr.sort []) u
+        let t ← mkFreshExprMVar (mkApp (.const ``Quoted []) u')
+        expectedType := .app (.const ``Quoted []) t
       Impl.macro t expectedType
 
 /-- `Q(α)` is the type of Lean expressions having type `α`.  -/
@@ -522,25 +533,12 @@ macro_rules | `(Q($t : $ty)) => `(Q(($t : $ty)))
 elab_rules : term <= expectedType
   | `(Q($t)) => do
     let expectedType ← instantiateMVars expectedType
-    let (true) ← isDefEq expectedType (mkSort (mkLevelSucc levelZero)) |
+    unless ← isDefEq expectedType q(Type) do
       throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
     commitIfDidNotPostpone do Impl.macro t expectedType
 
 /-- `a =Q b` says that `a` and `b` are definitionally equal. -/
 scoped notation a:50 " =Q " b:51 => QuotedDefEq q(a) q(b)
-
-/-- `ql(u)` quotes the universe level `u`. -/
-scoped elab "ql(" l:level ")" : term => do
-  let ((), s) ← unquoteLevelLCtx.run {mayPostpone := false}
-  let l ← s.withLevelNames do
-    let l ← elabLevel l
-    let refdLevels := (CollectLevelParams.collect (← instantiateLevelMVars l) {}).params
-    return (l, refdLevels)
-  quoteLevel l s
-
-/-- `a =QL b` says that the levels `a` and `b` are definitionally equal. -/
-scoped syntax atomic(level " =QL ") level : term
-macro_rules | `($a:level =QL $b) => `(QuotedLevelDefEq ql($a) ql($b))
 
 namespace Impl
 
