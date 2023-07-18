@@ -24,11 +24,11 @@ def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
   return none
 
 def findRedundantLocalInstQuoted? :
-    TermElabM (Option (FVarId × (u : Q(Level)) × (ty : Q(QQ (mkSort $u))) × Q(QQ $ty) × Q(QQ $ty))) := do
+    TermElabM (Option (FVarId × (u : Q(Level)) × (ty : Q(Quoted (mkSort $u))) × Q(Quoted $ty) × Q(Quoted $ty))) := do
   for ldecl in ← getLCtx do
     let ty ← whnfR ldecl.type
     if ty.isMVar then tryPostpone
-    if ty.isAppOf ``QQ then
+    if ty.isAppOf ``Quoted then
       if (← instantiateMVars ty.appArg!).hasExprMVar then
         tryPostpone
   StateT.run' (m := MetaM) (s := { mayPostpone := (← read).mayPostpone }) do
@@ -55,7 +55,7 @@ elab_rules : term <= expectedType | `(assumeInstancesCommute' $cont) => do
   match ← findRedundantLocalInstQuoted? with
   | some ⟨fvar, _, _, lhs, rhs⟩ =>
     let n ← mkFreshUserName ((← fvar.getUserName).eraseMacroScopes.appendAfter "_eq")
-    let ty := q(QE $lhs $rhs)
+    let ty := q(QuotedDefEq $lhs $rhs)
     elabTerm (← `(
         have $(mkIdent n) : $(← exprToSyntax ty) := ⟨⟩
         assumeInstancesCommute' $cont))

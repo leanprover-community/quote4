@@ -33,22 +33,22 @@ def delabQuoted : Delab := do
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
     withTheReader SubExpr (fun s => { s with expr := newE }) delab
 
-@[delab app.Qq.QQ]
+@[delab app.Qq.Quoted]
 def delabQ : Delab := do
   guard $ (← getExpr).getAppNumArgs == 1
   checkQqDelabOptions
   let stx ← withAppArg delabQuoted
   `(Q($stx))
 
-@[delab app.Qq.QQ.qq]
+@[delab app.Qq.Quoted.unsafeMk]
 def delabq : Delab := do
   guard $ (← getExpr).getAppNumArgs == 2
   checkQqDelabOptions
   let stx ← withAppArg delabQuoted
   `(q($stx))
 
-@[delab app.Qq.QE]
-def delabQE : Delab := do
+@[delab app.Qq.QuotedDefEq]
+def delabQuotedDefEq : Delab := do
   guard $ (← getExpr).getAppNumArgs == 4
   checkQqDelabOptions
   let lhs ← withAppFn do withAppArg delabQuoted

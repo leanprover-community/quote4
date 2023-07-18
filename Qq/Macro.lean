@@ -13,13 +13,13 @@ inductive ExprBackSubstResult
   | unquoted (e : Expr)
 
 inductive MVarSynth
-  | term (quotedType : Expr) (unquotedMVar : MVarId) --> QQ.qq _ _
-  | type (unquotedMVar : MVarId) --> QQ _
+  | term (quotedType : Expr) (unquotedMVar : MVarId) --> Quoted.unsafeMk _ _
+  | type (unquotedMVar : MVarId) --> Quoted _
   | level (unquotedMVar : LMVarId) --> Level
 
 structure UnquoteState where
   /--
-  Quoted mvars in the outside lctx (of type `Level`, `QQ _`, or `Type`).
+  Quoted mvars in the outside lctx (of type `Level`, `Quoted _`, or `Type`).
   The outside mvars can also be of the form `?m x y z`.
   -/
   mvars : List (Expr × MVarSynth) := []
@@ -199,7 +199,7 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
 
 partial def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
-  unless ty.isAppOf ``QQ do throwError "not of type Q(_):{indentExpr ty}"
+  unless ty.isAppOf ``Quoted do throwError "not of type Q(_):{indentExpr ty}"
   have et := ty.getArg! 0
   let newET ← unquoteExpr et
   let newMVar ← withUnquotedLCtx do mkFreshExprMVar newET
@@ -211,11 +211,11 @@ partial def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   return newMVar
 
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
-  if e.isAppOfArity ``QQ.qq 2 then return ← unquoteExpr (e.getArg! 1)
+  if e.isAppOfArity ``Quoted.unsafeMk 2 then return ← unquoteExpr (e.getArg! 1)
   if e.isAppOfArity ``toExpr 3 then return e.getArg! 2
   let e ← instantiateMVars (← whnf e)
   let eTy ← whnfR (← inferType e)
-  if eTy.isAppOfArity ``QQ 1 then
+  if eTy.isAppOfArity ``Quoted 1 then
     if let some e' := (← get).exprSubst.find? e then
       return e'
     if ← isAssignablePattern e then
@@ -268,7 +268,7 @@ partial def unquoteLCtx : UnquoteM Unit := do
     let fv := ldecl.toExpr
     let ty := ldecl.type
     let whnfTy ← withReducible <| whnf ty
-    if whnfTy.isAppOfArity ``QQ 1 then
+    if whnfTy.isAppOfArity ``Quoted 1 then
       let qTy := whnfTy.appArg!
       let newTy ← unquoteExpr qTy
       modify fun s => { s with
@@ -277,7 +277,7 @@ partial def unquoteLCtx : UnquoteM Unit := do
         exprBackSubst := s.exprBackSubst.insert fv (.quoted fv)
         exprSubst := s.exprSubst.insert fv fv
       }
-    else if whnfTy.isAppOfArity ``QE 4 then
+    else if whnfTy.isAppOfArity ``QuotedDefEq 4 then
       let tyLevel ← unquoteLevel (whnfTy.getArg! 0)
       let ty ← unquoteExpr (whnfTy.getArg! 1)
       let lhs ← unquoteExpr (whnfTy.getArg! 2)
@@ -374,7 +374,7 @@ partial def quoteExpr : Expr → QuoteM Expr
 
 def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
-  if ty.isAppOf ``QQ then
+  if ty.isAppOf ``Quoted then
     _ ← unquoteExprMVar mvar
   else if ty.isAppOf ``Level then
     _ ← unquoteLevelMVar mvar
@@ -398,8 +398,8 @@ def MVarSynth.isAssigned : MVarSynth → MetaM Bool
   | .level newMVar => isLevelMVarAssigned newMVar
 
 def MVarSynth.synth : MVarSynth → QuoteM Expr
-  | .term et newMVar => return mkApp2 (mkConst ``QQ.qq) et (← quoteExpr (← instantiateMVars (.mvar newMVar)))
-  | .type newMVar => return mkApp (mkConst ``QQ) (← quoteExpr (← instantiateMVars (.mvar newMVar)))
+  | .term et newMVar => return mkApp2 (mkConst ``Quoted.unsafeMk) et (← quoteExpr (← instantiateMVars (.mvar newMVar)))
+  | .type newMVar => return mkApp (mkConst ``Quoted) (← quoteExpr (← instantiateMVars (.mvar newMVar)))
   | .level newMVar => do quoteLevel (← instantiateLevelMVars (.mvar newMVar))
 
 def lctxHasMVar : MetaM Bool := do
@@ -470,6 +470,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
 
   instantiateMVars mainMVar
 
+/-- `q(t)` quotes the Lean expression `t` into a `Q(α)` (if `t : α`) -/
 scoped syntax "q(" term Parser.Term.optType ")" : term
 
 macro_rules | `(q($t : $ty)) => `(q(($t : $ty)))
@@ -481,13 +482,14 @@ elab_rules : term <= expectedType
     if ← lctxHasMVar then tryPostpone
     ensureHasType expectedType $ ← commitIfDidNotPostpone do
       let mut expectedType ← withReducible <| Impl.whnf expectedType
-      if !expectedType.isAppOfArity ``QQ 1 then
+      if !expectedType.isAppOfArity ``Quoted 1 then
         let u ← mkFreshExprMVar (mkConst ``Level)
         let u' := mkApp (mkConst ``mkSort) u
-        let t ← mkFreshExprMVar (mkApp (mkConst ``QQ) u')
-        expectedType := mkApp (mkConst ``QQ) t
+        let t ← mkFreshExprMVar (mkApp (mkConst ``Quoted) u')
+        expectedType := mkApp (mkConst ``Quoted) t
       Impl.macro t expectedType
 
+/-- `Q(α)` is the type of Lean expressions having type `α`.  -/
 scoped syntax "Q(" term Parser.Term.optType ")" : term
 
 macro_rules | `(Q($t : $ty)) => `(Q(($t : $ty)))
@@ -499,7 +501,8 @@ elab_rules : term <= expectedType
       throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
     commitIfDidNotPostpone do Impl.macro t expectedType
 
-scoped notation a:50 " =Q " b:51 => QE q(a) q(b)
+/-- `a =Q b` says that `a` and `b` are definitionally equal. -/
+scoped notation a:50 " =Q " b:51 => QuotedDefEq q(a) q(b)
 
 namespace Impl
 
@@ -537,7 +540,7 @@ partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
         return addSyntaxDollar term
       else
         withFreshMacroScope do
-          push (← `(a)) (← `(QQ _)) term
+          push (← `(a)) (← `(Quoted _)) term
           return addSyntaxDollar <|<- `(a)
     else
       match stx with
