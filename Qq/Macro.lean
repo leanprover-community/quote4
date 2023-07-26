@@ -39,6 +39,9 @@ structure UnquoteState where
   /- Maps free variables in the new context to levels in the old context (of type Level) -/
   levelBackSubst : HashMap Level Expr := {}
 
+  /-- New free variables in the new context that were newly introduced for irreducible expressions. -/
+  abstractedFVars : Array FVarId := #[]
+
   levelNames : List Name := []
 
   mayPostpone : Bool
@@ -164,8 +167,18 @@ partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
   else
     throwFailedToEval e
 
-def mkAbstractedName (e : Expr) : MetaM Name :=
-  return e.getAppFn.constName?.getD `dummy
+def mkAbstractedName (e : Expr) : UnquoteM Name := do
+  have base : Name :=
+    match e.getAppFn.constName? with
+    | some (.str _ s) => s!"${s}"
+    | _ => `unknown
+  let mut i := 0
+  repeat
+    i := i + 1
+    let n := base.appendIndexAfter i
+    unless (← get).unquoted.usesUserName n do
+      return n
+  unreachable!
 
 @[inline] opaque betaRev' (e : Expr) (revArgs : List Expr) : Expr :=
   e.betaRev revArgs.toArray
@@ -230,6 +243,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
       unquoted := s.unquoted.mkLocalDecl fvarId name ty
       exprSubst := s.exprSubst.insert e fv
       exprBackSubst := s.exprBackSubst.insert fv (.quoted e)
+      abstractedFVars := s.abstractedFVars.push fvarId
     }
     return fv
   let e ← whnf e
