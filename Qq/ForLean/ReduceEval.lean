@@ -17,7 +17,7 @@ private partial def evalList [ReduceEval α] (e : Expr) : MetaM (List α) := do
 
 instance [ReduceEval α] : ReduceEval (List α) := ⟨evalList⟩
 
-instance instReduceEvalFinSucc : ReduceEval (Fin (n+1)) where
+instance : ReduceEval (Fin (n+1)) where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``Fin.mk 3 then
@@ -29,7 +29,7 @@ instance : ReduceEval UInt64 where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``UInt64.mk 1 then
-      let _ : ReduceEval (Fin UInt64.size) := instReduceEvalFinSucc
+      let _ : ReduceEval (Fin UInt64.size) := inferInstanceAs <| ReduceEval (Fin (_+1))
       pure ⟨(← reduceEval (e.getArg! 0))⟩
     else
       throwFailedToEval e
