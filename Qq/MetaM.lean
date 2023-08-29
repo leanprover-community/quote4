@@ -1,4 +1,5 @@
 import Qq.Macro
+import Qq.Delab
 
 open Lean Elab Term Meta
 
