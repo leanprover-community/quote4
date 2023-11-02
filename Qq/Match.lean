@@ -27,7 +27,7 @@ def PatVarDecl.fvarTy : PatVarDecl → Q(Type)
   | { ty := some _, .. } => q(Expr)
 
 def PatVarDecl.fvar (decl : PatVarDecl) : Q($((decl.fvarTy))) :=
-  mkFVar decl.fvarId
+  Expr.fvar decl.fvarId
 
 def mkIsDefEqType : List PatVarDecl → Q(Type)
   | [] => q(Bool)
@@ -41,71 +41,70 @@ def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls))
   | [], val => q($val)
   | _ :: decls, val => mkIsDefEqResultVal decls q($val.2)
 
-def mkLambda' (n : Name) (fvar : Expr) (ty : Expr) (body : Expr) : Expr :=
-  mkLambda n BinderInfo.default ty (body.abstract #[fvar])
+def mkLambda' (n : Name) (fvar : Expr) (ty : Expr) (body : Expr) : MetaM Expr :=
+  return mkLambda n BinderInfo.default ty (← body.abstractM #[fvar])
 
-def mkLet' (n : Name) (fvar : Expr) (ty : Expr) (val : Expr) (body : Expr) : Expr :=
-  mkLet n ty val (body.abstract #[fvar])
+def mkLet' (n : Name) (fvar : Expr) (ty : Expr) (val : Expr) (body : Expr) : MetaM Expr :=
+  return mkLet n ty val (← body.abstractM #[fvar])
 
-def mkLambdaQ (n : Name) (fvar : QQ α) (body : QQ β) : QQ (mkForall n BinderInfo.default α β) :=
-  mkLambda n BinderInfo.default α (body.abstract #[fvar])
+def mkLambdaQ (n : Name) (fvar : Quoted α) (body : Quoted β) : MetaM (Quoted (mkForall n BinderInfo.default α β)) :=
+  return mkLambda n BinderInfo.default α (← body.abstractM #[fvar])
 
-def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → Q(MetaM $(mkIsDefEqType decls))
-  | [] => q(return $(mkIsDefEqResult true decls))
+def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → MetaM Q(MetaM $(mkIsDefEqType decls))
+  | [] => return q(return $(mkIsDefEqResult true decls))
   -- https://github.com/leanprover/lean4/issues/501
-  | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
+  | { ty := none, fvarId := fvarId, userName := userName } :: rest => do
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
-    q(Bind.bind (instantiateLevelMVars $(decl.fvar))
-      $(show Q(Level → MetaM $(mkIsDefEqType decls)) from
-        mkLambdaQ _ decl.fvar q($(mkInstantiateMVars decls rest))))
-  | { ty := some ty, fvarId := fvarId, userName := userName } :: rest =>
+    let instMVars : Q(Level → MetaM $(mkIsDefEqType decls)) ←
+      mkLambdaQ _ decl.fvar q($(← mkInstantiateMVars decls rest))
+    return q(Bind.bind (instantiateLevelMVars $(decl.fvar)) $instMVars)
+  | { ty := some ty, fvarId := fvarId, userName := userName } :: rest => do
     let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
-    q(Bind.bind (instantiateMVars $(decl.fvar))
-      $(show Q(Expr → MetaM $(mkIsDefEqType decls)) from
-        mkLambdaQ _ decl.fvar q($(mkInstantiateMVars decls rest))))
+    let instMVars : Q(Expr → MetaM $(mkIsDefEqType decls)) ←
+      mkLambdaQ _ decl.fvar q($(← mkInstantiateMVars decls rest))
+    return q(Bind.bind (instantiateMVars $(decl.fvar)) $instMVars)
 
 def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
-    List PatVarDecl → Q(MetaM $(mkIsDefEqType decls))
+    List PatVarDecl → MetaM Q(MetaM $(mkIsDefEqType decls))
   | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
-    q(Bind.bind mkFreshLevelMVar $(mkLambdaQ `x decl.fvar (mkIsDefEqCore decls pat discr rest)))
+    return q(Bind.bind mkFreshLevelMVar $(← mkLambdaQ `x decl.fvar (← mkIsDefEqCore decls pat discr rest)))
   | { ty := some ty, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
-    q(Bind.bind (mkFreshExprMVar $ty) $(mkLambdaQ `x decl.fvar (mkIsDefEqCore decls pat discr rest)))
-  | [] => q(do
+    return q(Bind.bind (mkFreshExprMVar $ty) $(← mkLambdaQ `x decl.fvar (← mkIsDefEqCore decls pat discr rest)))
+  | [] => do
+    let instMVars ← mkInstantiateMVars decls decls
+    return q(do
       let matches? ← withReducible $ isDefEq $pat $discr
-      by exact if matches? then
-        $(mkInstantiateMVars decls decls)
-      else
-        return $(mkIsDefEqResult false decls))
+      (if matches? then $instMVars else return $(mkIsDefEqResult false decls)))
 
-def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : Q(MetaM $(mkIsDefEqType decls)) :=
-  q(withNewMCtxDepth $(mkIsDefEqCore decls pat discr decls))
+def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : MetaM Q(MetaM $(mkIsDefEqType decls)) := do
+  return q(withNewMCtxDepth $(← mkIsDefEqCore decls pat discr decls))
 
-def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLCtx m]
-    (fvarId : FVarId) (userName : Name) (val : (QQ α)) (k : (QQ α) → m (QQ β)) : m (QQ β) := do
+def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLiftT MetaM m] [MonadLCtx m]
+    (fvarId : FVarId) (userName : Name) (val : (Quoted α)) (k : (Quoted α) → m (Quoted β)) : m (Quoted β) := do
   withExistingLocalDecls [LocalDecl.cdecl (← getLCtx).decls.size fvarId userName α .default .default] do
-    return QQ.qq $ mkLet' userName (mkFVar fvarId) α val (← k (mkFVar fvarId))
+    return Quoted.unsafeMk $ ← mkLet' userName (.fvar fvarId) α val (← k (.fvar fvarId))
 
 def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
     TermElabM Q($γ) → TermElabM Q($γ)
   | { ty := none, fvarId := fvarId, userName := userName } :: decls, acc, cb =>
     withLetHave fvarId userName (α := q(Level)) q($acc.1) fun _ => mkQqLets decls q($acc.2) cb
   | { ty := some ty, fvarId := fvarId, userName := userName } :: decls, acc, cb =>
-    withLetHave fvarId userName (α := q(QQ $ty)) q($acc.1) fun _ => mkQqLets decls q($acc.2) cb
+    withLetHave fvarId userName (α := q(Quoted $ty)) q($acc.1) fun _ => mkQqLets decls q($acc.2) cb
   | [], _, cb => cb
 
+-- FIXME: we're reusing fvarids here
 def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
   | [], e => e
   | { ty := some _, fvarId, .. } :: decls, e =>
-    ((replaceTempExprsByQVars decls e).abstract #[mkFVar fvarId]).instantiate #[mkFVar fvarId]
+    ((replaceTempExprsByQVars decls e).abstract #[.fvar fvarId]).instantiate #[.fvar fvarId]
   | { ty := none, .. } :: decls, e =>
     replaceTempExprsByQVars decls e
 
-set_option linter.all false in
-def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLiftT MetaM $m)) (instBind : Q(Bind $m))
-    (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(QQ (mkSort $uTy)))
-    (pat discr : Q(QQ $ty)) (alt : Q($m $γ)) (expectedType : Expr)
+def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLiftT MetaM $m)) (_instBind : Q(Bind $m))
+    (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(Quoted (.sort $uTy)))
+    (pat discr : Q(Quoted $ty)) (alt : Q($m $γ)) (expectedType : Expr)
     (k : Expr → TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
   let nextDecls : List PatVarDecl :=
     decls.map fun decl => { decl with ty := decl.ty.map fun e => replaceTempExprsByQVars decls e }
@@ -114,20 +113,20 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (instLift : Q(MonadLif
     let next : Q($m $γ) :=
       q(if $(mkIsDefEqResultVal decls fv) then
           $(← mkQqLets nextDecls fv do
-            let pat : Q(QQ $ty) := QQ.qq' $ replaceTempExprsByQVars decls pat
-            let (_, s) ← unquoteLCtx.run {}
-            let discr' ← (unquoteExpr discr).run' s
-            let pat' ← (unquoteExpr pat).run' s
-            withLocalDeclDQ (← mkFreshUserName `match_eq) q(QE $discr $pat) fun h => do
+            have pat : Q(Quoted $ty) := replaceTempExprsByQVars decls pat
+            let (_, s) ← unquoteLCtx.run { mayPostpone := (← read).mayPostpone }
+            let _discr' ← (unquoteExpr discr).run' s
+            let _pat' ← (unquoteExpr pat).run' s
+            withLocalDeclDQ (← mkFreshUserName `match_eq) q(QuotedDefEq $discr $pat) fun h => do
               let res ← k expectedType
               let res : Q($m $γ) ← instantiateMVars res
-              let res : Q($m $γ) := (← res.abstractM #[h]).instantiate #[q(⟨⟩ : QE $discr $pat)]
+              let res : Q($m $γ) := (← res.abstractM #[h]).instantiate #[q(⟨⟩ : QuotedDefEq $discr $pat)]
               return res)
         else
           $alt)
     return show Q($(mkIsDefEqType decls) → $m $γ) from
-      QQ.qq $ mkLambda' `result fv (mkIsDefEqType decls) next
-  pure q(Bind.bind $(mkIsDefEq decls pat discr) $next)
+      Quoted.unsafeMk $ ← mkLambda' `result fv (mkIsDefEqType decls) next
+  pure q(Bind.bind $(← mkIsDefEq decls pat discr) $next)
 
 def unquoteForMatch (et : Expr) : UnquoteM (LocalContext × LocalInstances × Expr) := do
   unquoteLCtx
@@ -140,7 +139,7 @@ def mkNAryFunctionType : Nat → MetaM Expr
   | n+1 => do withLocalDeclD `x (← mkFreshTypeMVar) fun x => do
     mkForallFVars #[x] (← mkNAryFunctionType n)
 
-partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr)) TermElabM Term := do
+partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr × Term)) TermElabM Term := do
   match pat with
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
     | _ => if isPatVar pat then return ← mkMVar pat #[]
@@ -156,9 +155,12 @@ partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr)) TermE
 
     mkMVar (fn : Syntax) (args : Array Term) : StateT _ TermElabM Term := do
       let args ← args.mapM getPatVars
+      let id := fn.getAntiquotTerm.getId
       withFreshMacroScope do
+        if let some (_, _, _, m) := (← get).find? fun (n, _) => n == id then
+          return ← `($m $args*)
         let mvar ← elabTerm (← `(?m)).1.stripPos (← mkNAryFunctionType args.size)
-        modify fun s => s.push (fn.getAntiquotTerm.getId, args.size, mvar)
+        modify (·.push (id, args.size, mvar, ← `(?m)))
         `(?m $args*)
 
 def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
@@ -178,13 +180,13 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
 
           let mut newDecls := #[]
 
-          for (patVar, _, mvar) in patVars do
+          for (patVar, _, mvar, _) in patVars do
             assert! mvar.isMVar
             let fvarId := FVarId.mk (← mkFreshId)
             let type ← inferType mvar
             newDecls := newDecls.push $
               LocalDecl.cdecl default fvarId patVar type .default .default
-            mvar.mvarId!.assign (mkFVar fvarId)
+            mvar.mvarId!.assign (.fvar fvarId)
 
           for newMVar in ← getMVars pat do
             let fvarId := FVarId.mk (← mkFreshId)
@@ -192,7 +194,7 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
             let userName ← mkFreshBinderName
             newDecls := newDecls.push $
               LocalDecl.cdecl default fvarId userName type .default .default
-            newMVar.assign (mkFVar fvarId)
+            newMVar.assign (.fvar fvarId)
 
           withExistingLocalDecls newDecls.toList do
             return (← instantiateMVars pat,
@@ -204,11 +206,11 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let alt ← elabTermEnsuringType alt expectedType
 
   let argLvlExpr ← mkFreshExprMVarQ q(Level)
-  let argTyExpr ← mkFreshExprMVarQ q(QQ (mkSort $argLvlExpr))
-  let e' ← elabTermEnsuringTypeQ e q(QQ $argTyExpr)
+  let argTyExpr ← mkFreshExprMVarQ q(Quoted (.sort $argLvlExpr))
+  let e' ← elabTermEnsuringTypeQ e q(Quoted $argTyExpr)
   let argTyExpr ← instantiateMVarsQ argTyExpr
 
-  let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run {}
+  let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run { mayPostpone := (← read).mayPostpone }
   let (pat, patVarDecls, newLevels) ← elabPat pat lctx localInsts type s.levelNames
 
   let mut s := s
@@ -216,21 +218,21 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   for newLevel in newLevels do
     let fvarId := FVarId.mk (← mkFreshId)
     oldPatVarDecls := oldPatVarDecls ++ [{ ty := none, fvarId := fvarId, userName := newLevel }]
-    s := { s with levelBackSubst := s.levelBackSubst.insert (mkLevelParam newLevel) (mkFVar fvarId) }
+    s := { s with levelBackSubst := s.levelBackSubst.insert (.param newLevel) (.fvar fvarId) }
 
   for ldecl in patVarDecls do
     let qty ← (quoteExpr ldecl.type).run s
     oldPatVarDecls := oldPatVarDecls ++ [{ ty := some qty, fvarId := ldecl.fvarId, userName := ldecl.userName }]
     s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr (.quoted ldecl.toExpr) }
 
-  let m : Q(Type → Type) := QQ.qq' emr.m
-  let γ : Q(Type) := QQ.qq' emr.returnType
+  have m : Q(Type → Type) := emr.m
+  have γ : Q(Type) := emr.returnType
   let inst ← synthInstanceQ q(Bind $m)
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
-  let synthed : Q(Expr) := QQ.qq' (← quoteExpr (← instantiateMVars pat) s)
+  have synthed : Q(Expr) := (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q($m $γ) := alt
-  makeMatchCode q(‹_›) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
-    return QQ.qq (← elabTerm body expectedType)
+  makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
+    return Quoted.unsafeMk (← elabTerm body expectedType)
 
 scoped syntax "_qq_match" term " ← " term " | " doSeq : term
 macro_rules
@@ -325,7 +327,7 @@ private partial def floatExprAntiquot (depth : Nat) : Term → StateT (Array (TS
               return ⟨addSyntaxDollar id⟩
           | none => pure ()
         withFreshMacroScope do
-          push <|<- `(doSeqItem| let a : QQ _ := $term)
+          push <|<- `(doSeqItem| let a : Quoted _ := $term)
           return ⟨addSyntaxDollar (← `(a))⟩
     else
       match stx with

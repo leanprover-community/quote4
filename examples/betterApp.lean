@@ -13,4 +13,4 @@ def betterApp {α : Q(Sort $u)} {β : Q($α → Sort $v)}
 
 #eval betterApp q(Int.toNat) q(42)
 
-#check betterApp (α := q(Nat)) (β := q(fun n : Nat => Fin (n+1))) q(fun a => ⟨a, Nat.lt_succ_self _⟩) q(42)
+#check betterApp (β := q(fun n : Nat => Fin (n+1))) q(fun a => ⟨a, Nat.lt_succ_self _⟩) q(42)

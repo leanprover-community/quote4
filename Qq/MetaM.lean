@@ -1,4 +1,5 @@
 import Qq.Macro
+import Qq.Delab
 
 open Lean Elab Term Meta
 
@@ -39,8 +40,13 @@ def checkTypeQ (e : Expr) (ty : Q(Sort $u)) : MetaM (Option Q($ty)) := do
     return none
 
 inductive MaybeDefEq {α : Q(Sort $u)} (a b : Q($α)) where
-  | defEq : QE a b → MaybeDefEq a b
+  | defEq : QuotedDefEq a b → MaybeDefEq a b
   | notDefEq : MaybeDefEq a b
+
+instance : Repr (MaybeDefEq a b) where
+  reprPrec := fun
+    | .defEq _, prec => Repr.addAppParen "defEq _" prec
+    | .notDefEq, _ => "notDefEq"
 
 def isDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (MaybeDefEq a b) := do
   if ← isDefEq a b then
@@ -48,7 +54,7 @@ def isDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (MaybeDefEq a b) := do
   else
     return .notDefEq
 
-def assertDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (PLift (QE a b)) := do
+def assertDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (PLift (QuotedDefEq a b)) := do
   match ← isDefEqQ a b with
   | .defEq witness => return ⟨witness⟩
   | .notDefEq => throwError "{a} is not definitionally equal to{indentExpr b}"

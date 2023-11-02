@@ -5,36 +5,64 @@ set_option linter.unusedVariables false
 
 namespace Qq
 
-def QQ (α : Expr) := Expr
+/--
+`Quoted α` is the type of Lean expressions having type `α`.
 
-protected def QQ.qq (e : Expr) : QQ α := e
+You should usually write this using the notation `Q($α)`.
+-/
+def Quoted (α : Expr) := Expr
 
-instance : BEq (QQ α) := inferInstanceAs (BEq Expr)
-instance : Hashable (QQ α) := inferInstanceAs (Hashable Expr)
-instance : Inhabited (QQ α) := inferInstanceAs (Inhabited Expr)
-instance : ToString (QQ α) := inferInstanceAs (ToString Expr)
+/--
+Creates a quoted expression.  Requires that `e` has type `α`.
 
-instance : CoeOut (QQ α) Expr where coe e := e
-instance : CoeOut (QQ α) MessageData where coe := .ofExpr
-instance : ToMessageData (QQ α) where toMessageData := .ofExpr
+You should usually write this using the notation `q($e)`.
+-/
+protected def Quoted.unsafeMk (e : Expr) : Quoted α := e
 
-@[irreducible]
-protected def QQ.qq' {α : Expr} (t : Expr) : QQ α := QQ.qq t
+instance : BEq (Quoted α) := inferInstanceAs (BEq Expr)
+instance : Hashable (Quoted α) := inferInstanceAs (Hashable Expr)
+instance : Inhabited (Quoted α) := inferInstanceAs (Inhabited Expr)
+instance : ToString (Quoted α) := inferInstanceAs (ToString Expr)
+instance : Repr (Quoted α) := inferInstanceAs (Repr Expr)
 
-protected abbrev QQ.ty (t : QQ α) : Expr := α
+instance : CoeOut (Quoted α) Expr where coe e := e
+instance : CoeOut (Quoted α) MessageData where coe := .ofExpr
+instance : ToMessageData (Quoted α) where toMessageData := .ofExpr
 
-structure QE {α : QQ (mkSort u)} (lhs rhs : QQ α) : Prop
+/-- Gets the type of a quoted expression.  -/
+protected abbrev Quoted.ty (t : Quoted α) : Expr := α
+
+/--
+`QuotedDefEq lhs rhs` says that the expressions `lhs` and `rhs` are definitionally equal.
+
+You should usually write this using the notation `$lhs =Q $rhs`.
+-/
+structure QuotedDefEq {α : Quoted (.sort u)} (lhs rhs : Quoted α) : Prop :=
+  unsafeIntro ::
+
+/--
+`QuotedLevelDefEq u v` says that the levels `u` and `v` are definitionally equal.
+
+You should usually write this using the notation `$u =QL $v`.
+-/
+structure QuotedLevelDefEq (u v : Level) : Prop :=
+  unsafeIntro ::
 
 open Meta in
-protected def QQ.check (e : QQ α) : MetaM Unit := do
+protected def Quoted.check (e : Quoted α) : MetaM Unit := do
   let α' ← inferType e
   unless ← isDefEq α α' do
     throwError "type mismatch{indentExpr e}\n{← mkHasTypeButIsExpectedMsg α' α}"
 
 open Meta in
-protected def QE.check (e : @QE u α lhs rhs) : MetaM Unit := do
+protected def QuotedDefEq.check (e : @QuotedDefEq u α lhs rhs) : MetaM Unit := do
   α.check
   lhs.check
   rhs.check
   unless ← isDefEq lhs rhs do
+    throwError "{lhs} and {rhs} are not defeq"
+
+open Meta in
+protected def QuotedLevelDefEq.check (e : QuotedLevelDefEq lhs rhs) : MetaM Unit := do
+  unless ← isLevelDefEq lhs rhs do
     throwError "{lhs} and {rhs} are not defeq"
