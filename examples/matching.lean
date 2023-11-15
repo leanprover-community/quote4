@@ -26,3 +26,28 @@ abbrev square (a : Nat) :=
 #eval square 10
 #eval summands q(inferInstance) q(k + square (square k))
 #eval summands q(⟨(· * ·)⟩) q(k * square (square k))
+
+def matchProd (e : Nat × Q(Nat)) : MetaM Bool := do
+  let (2, ~q(1)) := e | return false
+  return true
+
+#eval do guard <| (←matchProd (2, q(1))) == true
+#eval do guard <| (←matchProd (1, q(1))) == false
+#eval do guard <| (←matchProd (2, q(2))) == false
+
+def matchNatSigma (e : (n : Q(Type)) × Q($n)) : MetaM (Option Q(Nat)) := do
+  let ⟨~q(Nat), ~q($n)⟩ := e | return none
+  return some n
+
+#eval do guard <| (← matchNatSigma ⟨q(Nat), q(1)⟩) == some q(1)
+#eval do guard <| (← matchNatSigma ⟨q(Nat), q(2)⟩) == some q(2)
+#eval do guard <| (← matchNatSigma ⟨q(Int), q(2)⟩) == none
+
+
+/-- Given `x + y` of Nat, returns `(x, y)`. Otherwise fail. -/
+def getNatAdd (e : Expr) : MetaM (Option (Q(Nat) × Q(Nat))) := do
+  let ⟨Level.succ Level.zero, ~q(Nat), ~q($a + $b)⟩ ← inferTypeQ e | return none
+  return some (a, b)
+
+#eval do guard <| (← getNatAdd q(1 + 2)) == some (q(1), q(2))
+#eval do guard <| (← getNatAdd q((1 + 2 : Int))) == none

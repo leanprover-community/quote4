@@ -281,7 +281,7 @@ partial def Impl.hasQMatch : Syntax → Bool
 partial def Impl.floatQMatch (alt : TSyntax ``doSeq) : Term → StateT (List (TSyntax ``doSeqItem)) MacroM Term
   | `(~q($term)) =>
     withFreshMacroScope do
-      let auxDoElem ← `(doSeqItem| let ~q($term) ← x | $alt)
+      let auxDoElem ← `(doSeqItem| let ~q($term) := x | $alt)
       modify fun s => s ++ [auxDoElem]
       `(x)
   | stx => do match stx with
