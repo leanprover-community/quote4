@@ -27,6 +27,7 @@ abbrev square (a : Nat) :=
 #eval summands q(inferInstance) q(k + square (square k))
 #eval summands q(⟨(· * ·)⟩) q(k * square (square k))
 
+set_option pp.macroStack true in
 def matchProd (e : Nat × Q(Nat)) : MetaM Bool := do
   let (2, ~q(1)) := e | return false
   return true
@@ -51,3 +52,27 @@ def getNatAdd (e : Expr) : MetaM (Option (Q(Nat) × Q(Nat))) := do
 
 #eval do guard <| (← getNatAdd q(1 + 2)) == some (q(1), q(2))
 #eval do guard <| (← getNatAdd q((1 + 2 : Int))) == none
+
+
+
+section test_return
+
+def foo1 (T : Q(Type)) : MetaM Nat := do
+  let x : Nat ← match T with
+    | ~q(Prop) => return (2 : Nat)
+    | _ => pure (1 : Nat)
+  pure (3 + x)
+
+#eval do guard <| (←foo1 q(Prop)) == 2
+#eval do guard <| (←foo1 q(Nat)) == 3 + 1
+
+def foo2 (T : Q(Type)) : MetaM Nat := do
+  let x : Nat ← match T with
+    | ~q(Prop) => pure (2 : Nat)
+    | _ => return (1 : Nat)
+  pure (3 + x)
+
+#eval do guard <| (←foo2 q(Prop)) == 3 + 2
+#eval do guard <| (←foo2 q(Nat)) == 1
+
+end test_return
