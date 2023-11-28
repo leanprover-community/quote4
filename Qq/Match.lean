@@ -248,8 +248,8 @@ partial def isIrrefutablePattern : Term → Bool
 
 scoped elab "_comefrom" n:ident "do" b:doSeq " in " body:term : term <= expectedType => do
   let _ ← extractBind expectedType
-  (← elabTerm (← `(?m)).1.stripPos none).mvarId!.assign expectedType
-  elabTerm (← `(have $n:ident : ?m := (do $b:doSeq); $body)) expectedType
+  let ty ← exprToSyntax expectedType
+  elabTerm (← `(have $n:ident : $ty := (do $b:doSeq); $body)) expectedType
 
 scoped syntax "_comefrom" ident "do" doSeq : term
 macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b in $body)
