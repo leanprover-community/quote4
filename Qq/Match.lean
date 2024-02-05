@@ -353,10 +353,10 @@ macro_rules
       let mut subItems : Array (TSyntax ``doSeqItem) := #[]
       for discr in discrs, pat in pats do
         subItems :=
-          subItems ++ (← mkLetDoSeqItem pat discr (←`(doSeq|$alt:doElem)))
-      subItems := subItems.push (←`(doSeqItem|do $rhs))
+          subItems ++ (← mkLetDoSeqItem pat discr (← `(doSeq|$alt:doElem)))
+      subItems := subItems.push (← `(doSeqItem| do $rhs))
       alt ← `(doElem| do $subItems:doSeqItem*)
-    items := items.push (←`(doSeqItem|$alt:doElem))
+    items := items.push (← `(doSeqItem|$alt:doElem))
     `(doElem| do $items:doSeqItem*)
 
 end
