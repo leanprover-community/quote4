@@ -117,3 +117,10 @@ def foo_if_let2 (T : Q(Type)) : MetaM Nat := do
 #eval do guard <| (←foo_if_let2 q(Nat)) == 1
 
 end test_return
+def pairLit (u : Lean.Level) (α : Q(Type u)) (a : Q($α)) : MetaM Q($α × $α) := do
+  match u, α, a with
+  | 0, ~q(Nat), n => return q(($n, $n))
+  | 0, ~q(Int), z => return q(($z, $z))
+  | _, _, _ => failure
+
+#eval show MetaM Unit from do guard <| (←pairLit _ _ q(2)) == q((2, 2))
