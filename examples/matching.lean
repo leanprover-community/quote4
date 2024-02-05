@@ -51,3 +51,11 @@ def getNatAdd (e : Expr) : MetaM (Option (Q(Nat) × Q(Nat))) := do
 
 #eval do guard <| (← getNatAdd q(1 + 2)) == some (q(1), q(2))
 #eval do guard <| (← getNatAdd q((1 + 2 : Int))) == none
+
+def pairLit (u : Lean.Level) (α : Q(Type u)) (a : Q($α)) : MetaM Q($α × $α) := do
+  match u, α, a with
+  | 0, ~q(Nat), n => return q(($n, $n))
+  | 0, ~q(Int), z => return q(($z, $z))
+  | _, _, _ => failure
+
+#eval show MetaM Unit from do guard <| (←pairLit _ _ q(2)) == q((2, 2))
