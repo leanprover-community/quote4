@@ -224,6 +224,7 @@ partial def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   return newMVar
 
 partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
+  if e.isAppOfArity ``Quoted.raw 2 then return ← unquoteExpr (e.getArg! 1)
   if e.isAppOfArity ``Quoted.unsafeMk 2 then return ← unquoteExpr (e.getArg! 1)
   if e.isAppOfArity ``toExpr 3 then return e.getArg! 2
   let e ← instantiateMVars (← whnf e)
@@ -245,7 +246,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
       exprBackSubst := s.exprBackSubst.insert fv (.quoted e)
       abstractedFVars := s.abstractedFVars.push fvarId
     }
-    return fv
+    return fv -- (.app (.app (.const ``Quoted.raw []) ty) fv)
   let e ← whnf e
   let .const c _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}: {e.getAppFn} not a constant"
   let nargs := e.getAppNumArgs
@@ -376,11 +377,13 @@ partial def quoteExpr : Expr → QuoteM Expr
   | .bvar i => return mkApp (.const ``Expr.bvar []) (toExpr i)
   | e@(.fvar ..) => do
     let some r := (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
-    match r with
+    let r ← match r with
     | .quoted r => return r
     | .unquoted r => quoteExpr r
+    return .app (.const ``Quoted.raw []) r
   | e@(.mvar ..) => do
-    if let some (.quoted r) := (← read).exprBackSubst.find? e then return r
+    if let some (.quoted r) := (← read).exprBackSubst.find? e then
+      return .app (.const ``Quoted.raw []) r
     throwError "resulting term contains metavariable {e}"
   | .sort u => return mkApp (.const ``Expr.sort []) (← quoteLevel u)
   | .const n ls => return mkApp2 (.const ``Expr.const []) (toExpr n) (← quoteLevelList ls)
@@ -521,23 +524,42 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   instantiateMVars mainMVar
 
 /-- `q(t)` quotes the Lean expression `t` into a `Q(α)` (if `t : α`) -/
-scoped syntax "q(" term Parser.Term.optType ")" : term
+scoped syntax (name := quote) "q(" term Parser.Term.optType ")" : term
 
 macro_rules | `(q($t : $ty)) => `(q(($t : $ty)))
 
-elab_rules : term <= expectedType
-  | `(q($t)) => do
-    let expectedType ← instantiateMVars expectedType
-    if expectedType.hasExprMVar then tryPostpone
-    if ← lctxHasMVar then tryPostpone
-    ensureHasType expectedType $ ← commitIfDidNotPostpone do
-      let mut expectedType ← withReducible <| Impl.whnf expectedType
-      if !expectedType.isAppOfArity ``Quoted 1 then
-        let u ← mkFreshExprMVar (some (.const ``Level []))
-        let u' := .app (.const ``Expr.sort []) u
-        let t ← mkFreshExprMVar (mkApp (.const ``Quoted []) u')
-        expectedType := .app (.const ``Quoted []) (.app (.const ``QuotedStruct.raw []) t)
+-- #check Lean.Elab.Command.withExpectedType
+@[term_elab quote]
+def elabQuote : TermElab
+  | `(q($t)), expectedType? => do
+    if let some expectedType := expectedType? then
+      let expectedType ← instantiateMVars expectedType
+      if expectedType.hasExprMVar then tryPostpone
+      if ← lctxHasMVar then tryPostpone
+      ensureHasType expectedType $ ← commitIfDidNotPostpone do
+        let mut expectedType ← withReducible <| Impl.whnf expectedType
+        if !expectedType.isAppOfArity ``Quoted 1 || (expectedType.getArg! 0).isMVar then
+          let u ← mkFreshExprMVar (some (.const ``Level []))
+          let u' := .app (.const ``Expr.sort []) u
+          let t ← mkFreshExprMVar (some <| .app (.const ``Quoted []) u')
+          expectedType := .app (.const ``Quoted []) (.app (.app (.const ``Quoted.raw []) u') t)
+        Impl.macro t expectedType
+    else
+      let u ← mkFreshExprMVar (some (.const ``Level []))
+      let u' := .app (.const ``Expr.sort []) u
+      let t' ← mkFreshExprMVar (some <| .app (.const ``Quoted []) u')
+      let expectedType := .app (.const ``Quoted []) (.app (.app (.const ``Quoted.raw []) u') t')
       Impl.macro t expectedType
+  | _, _ => throwUnsupportedSyntax
+
+variable (x : Term × Term)
+#check `($(x.1))
+
+#check (q(Prop))
+#check (q(Prop)).raw
+#check (q(Prop) : Quoted (.sort _))
+#check (q(Prop) : Quoted _)
+#check (Quoted.raw q(Type) : Expr)
 
 #check q(Type)
 
@@ -593,7 +615,8 @@ partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
       else
         withFreshMacroScope do
           push (← `(a)) (← `(Quoted _)) term
-          return addSyntaxDollar <|<- `(a)
+          -- return Syntax.mkAntiquotNode kind (← `(Quoted.raw a))
+          return addSyntaxDollar <| <- `(a)
     else
       match stx with
       | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatExprAntiquot' depth))
@@ -613,6 +636,7 @@ macro_rules
     let mut t ← `(Q($t))
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
+    dbg_trace "ok"
     pure t
   | `(q($t0)) => do
     let (t, lifts) ← floatExprAntiquot 0 t0 #[]
@@ -623,3 +647,8 @@ macro_rules
     pure t
 
 end Impl
+
+variable (x : Q(Nat))
+#check q(Fin $x)
+example : Q(Type) := q(Fin $(x))
+#check q($x)

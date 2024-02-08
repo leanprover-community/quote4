@@ -5,9 +5,8 @@ set_option linter.unusedVariables false
 
 namespace Qq
 
-structure QuotedStruct where
-    unsafeMk ::
-  raw : Expr
+structure QuotedStruct where private mk ::
+  private raw : Expr
 deriving BEq, Hashable, Inhabited, Repr
 
 /--
@@ -17,7 +16,12 @@ You should usually write this using the notation `Q($α)`.
 -/
 def Quoted (α : Expr) := QuotedStruct
 
-protected def Quoted.unsafeMk (e : Expr) : Quoted α := ⟨e⟩
+def Quoted.raw (q : Quoted e) : Expr := QuotedStruct.raw q
+
+/--
+You should usually write this using the notation `q($e)`.
+-/
+protected def Quoted.unsafeMk {α : Expr} (e : Expr) : Quoted α := QuotedStruct.mk e
 
 instance : BEq (Quoted α) := inferInstanceAs (BEq QuotedStruct)
 instance : Hashable (Quoted α) := inferInstanceAs (Hashable QuotedStruct)
@@ -26,8 +30,8 @@ instance : Inhabited (Quoted α) := inferInstanceAs (Inhabited QuotedStruct)
 instance : Repr (Quoted α) := inferInstanceAs (Repr QuotedStruct)
 
 -- instance : CoeOut (Quoted α) Expr where coe e := e
-instance : CoeOut (Quoted α) MessageData where coe q := .ofExpr q.raw
-instance : ToMessageData (Quoted α) where toMessageData q := .ofExpr q.raw
+instance : CoeOut (Quoted α) MessageData where coe e := .ofExpr e.raw
+instance : ToMessageData (Quoted α) where toMessageData e := .ofExpr e.raw
 
 /-- Gets the type of a quoted expression.  -/
 protected abbrev Quoted.ty (t : Quoted α) : Expr := α

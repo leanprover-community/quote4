@@ -23,6 +23,8 @@ abbrev square (a : Nat) :=
   have : Add Nat := ⟨(· * ·)⟩
   a + a
 
+#check (q(Nat) : Expr)
+
 #eval square 10
 #eval summands q(inferInstance) q(k + square (square k))
 #eval summands q(⟨(· * ·)⟩) q(k * square (square k))
