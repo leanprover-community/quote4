@@ -247,7 +247,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     }
     return fv
   let e ← whnf e
-  let .const c _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
+  let .const c _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}: {e.getAppFn} not a constant"
   let nargs := e.getAppNumArgs
   match c, nargs with
     | ``betaRev', 2 => return betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
@@ -536,8 +536,10 @@ elab_rules : term <= expectedType
         let u ← mkFreshExprMVar (some (.const ``Level []))
         let u' := .app (.const ``Expr.sort []) u
         let t ← mkFreshExprMVar (mkApp (.const ``Quoted []) u')
-        expectedType := .app (.const ``Quoted []) t
+        expectedType := .app (.const ``Quoted []) (.app (.const ``QuotedStruct.raw []) t)
       Impl.macro t expectedType
+
+#check q(Type)
 
 /-- `Q(α)` is the type of Lean expressions having type `α`.  -/
 scoped syntax "Q(" term Parser.Term.optType ")" : term
@@ -547,7 +549,7 @@ macro_rules | `(Q($t : $ty)) => `(Q(($t : $ty)))
 elab_rules : term <= expectedType
   | `(Q($t)) => do
     let expectedType ← instantiateMVars expectedType
-    unless ← isDefEq expectedType q(Type) do
+    unless ← isDefEq expectedType q(Type).raw do
       throwError "Q(.) has type Type, expected type is{indentExpr expectedType}"
     commitIfDidNotPostpone do Impl.macro t expectedType
 
