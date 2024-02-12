@@ -355,12 +355,19 @@ macro_rules
           auxs
         `(doElem| do $items:doSeqItem*)
 
-  | `(match $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
+  | `(match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
     if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
-    `(do match $[$discrs:term],* with $[| $[$patss:term],* => $rhss:term]*)
+    `(do match $[$gen]? $[$discrs:term],* with $[| $[$patss:term],* => $rhss:term]*)
 
-  | `(doElem| match $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
+  | `(doElem| match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
     if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
+
+    -- only `generalizing := true` (the default) is supported
+    if let some stx := gen then
+      match stx with
+      | `(generalizingParam| (generalizing := true)) => pure ()
+      | _ => Macro.throwErrorAt stx "not supported in ~q matching"
+
     let mut items := #[]
     items := items.push (← `(doSeqItem| comefrom alt do throwError "nonexhaustive match"))
     for pats in patss.reverse, rhs in rhss.reverse do
