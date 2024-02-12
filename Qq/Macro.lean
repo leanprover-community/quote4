@@ -24,19 +24,19 @@ structure UnquoteState where
   -/
   mvars : List (Expr × MVarSynth) := []
 
-  /- Maps quoted expressions (of type Level) in the old context to level parameter names in the new context -/
+  /-- Maps quoted expressions (of type Level) in the old context to level parameter names in the new context -/
   levelSubst : HashMap Expr Level := {}
 
-  /- Maps quoted expressions (of type Expr) in the old context to expressions in the new context -/
+  /-- Maps quoted expressions (of type Expr) in the old context to expressions in the new context -/
   exprSubst : HashMap Expr Expr := {}
 
-  /- New unquoted local context -/
+  /-- New unquoted local context -/
   unquoted := LocalContext.empty
 
-  /- Maps free variables in the new context to expressions in the old context (of type Expr) -/
+  /-- Maps free variables in the new context to expressions in the old context (of type Expr) -/
   exprBackSubst : HashMap Expr ExprBackSubstResult := {}
 
-  /- Maps free variables in the new context to levels in the old context (of type Level) -/
+  /-- Maps free variables in the new context to levels in the old context (of type Level) -/
   levelBackSubst : HashMap Level Expr := {}
 
   /-- New free variables in the new context that were newly introduced for irreducible expressions. -/
