@@ -170,7 +170,7 @@ partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
 def mkAbstractedName (e : Expr) : UnquoteM Name := do
   have base : Name :=
     match e.getAppFn.constName? with
-    | some (.str _ s) => s!"${s}"
+    | some (.str _ s) => .mkSimple s!"${s}"
     | _ => `unknown
   let mut i := 0
   repeat
