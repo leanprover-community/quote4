@@ -1,2 +1,4 @@
 /build
 /lakefile.olean
+/.lake
+/lake-manifest.json
