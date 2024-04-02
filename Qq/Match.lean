@@ -110,18 +110,20 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLi
     decls.map fun decl => { decl with ty := decl.ty.map fun e => replaceTempExprsByQVars decls e }
   let next ← withLocalDeclD (← mkFreshBinderName) (mkIsDefEqType decls) fun fv => do
     let fv : Q($(mkIsDefEqType decls)) := fv
+    -- note: cannot inline into `$body` due to leanprover/lean4#3827
+    let body ← mkQqLets nextDecls fv do
+      have pat : Q(Quoted $ty) := replaceTempExprsByQVars decls pat
+      let (_, s) ← unquoteLCtx.run { mayPostpone := (← read).mayPostpone }
+      let _discr' ← (unquoteExpr discr).run' s
+      let _pat' ← (unquoteExpr pat).run' s
+      withLocalDeclDQ (← mkFreshUserName `match_eq) q(QuotedDefEq $discr $pat) fun h => do
+        let res ← k expectedType
+        let res : Q($m $γ) ← instantiateMVars res
+        let res : Q($m $γ) := (← res.abstractM #[h]).instantiate #[q(⟨⟩ : QuotedDefEq $discr $pat)]
+        return res
     let next : Q($m $γ) :=
       q(if $(mkIsDefEqResultVal decls fv) then
-          $(← mkQqLets nextDecls fv do
-            have pat : Q(Quoted $ty) := replaceTempExprsByQVars decls pat
-            let (_, s) ← unquoteLCtx.run { mayPostpone := (← read).mayPostpone }
-            let _discr' ← (unquoteExpr discr).run' s
-            let _pat' ← (unquoteExpr pat).run' s
-            withLocalDeclDQ (← mkFreshUserName `match_eq) q(QuotedDefEq $discr $pat) fun h => do
-              let res ← k expectedType
-              let res : Q($m $γ) ← instantiateMVars res
-              let res : Q($m $γ) := (← res.abstractM #[h]).instantiate #[q(⟨⟩ : QuotedDefEq $discr $pat)]
-              return res)
+          $body
         else
           $alt)
     return show Q($(mkIsDefEqType decls) → $m $γ) from
