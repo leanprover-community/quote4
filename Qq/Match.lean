@@ -172,7 +172,7 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
           let (pat, patVars) ← getPatVars pat #[]
           let pat ← Lean.Elab.Term.elabTerm pat ty
           let pat ← ensureHasType ty pat
-          synthesizeSyntheticMVars false
+          synthesizeSyntheticMVars (postpone := .no)
           let pat ← instantiateMVars pat
 
           let mctx ← getMCtx
