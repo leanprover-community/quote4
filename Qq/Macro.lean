@@ -495,7 +495,7 @@ def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
       withProcessPostponed do withSynthesize do
       let t ← Term.elabTerm t lastDecl.type
       let t ← ensureHasType lastDecl.type t
-      synthesizeSyntheticMVars (mayPostpone := false)
+      synthesizeSyntheticMVars (postpone := .no)
       if (← logUnassignedUsingErrorInfos (← getMVars t)) then
         throwAbortTerm
       lastId.assign t
