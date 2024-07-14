@@ -2,6 +2,13 @@ import Lean
 import Qq.ForLean.ReduceEval
 import Qq.ForLean.ToExpr
 import Qq.Typ
+/-!
+# The `q( )` and `Q( )` macros
+
+This file provides the main feature of `Qq`; the `q( )` and `Q( )` macros,
+which are available with `open scoped Qq`.
+-/
+
 open Lean Meta Std
 
 namespace Qq
