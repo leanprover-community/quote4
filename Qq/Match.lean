@@ -7,6 +7,10 @@ import Qq.SortLocalDecls
 
 This file extends the syntax of `match` and `let` to permit matching terms of type `Q(α)` using
 `~q(<pattern>)`, just as terms of type `Syntax` can be matched with `` `(<pattern>) ``.
+Compare to the builtin `match_expr` and `let_expr`, `~q()` matching:
+* is type-safe, and so helps avoid many mistakes in match patterns
+* matches by definitional equality, rather than expression equality
+* supports compound expressions, not just a single application
 
 See `Qq.matcher` for a brief syntax summary.
 
