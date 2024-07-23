@@ -49,12 +49,14 @@ structure QuotedLevelDefEq (u v : Level) : Prop :=
   unsafeIntro ::
 
 open Meta in
+/-- Check that a term `e : Q(α)` really has type `α`. -/
 protected def Quoted.check (e : Quoted α) : MetaM Unit := do
   let α' ← inferType e
   unless ← isDefEq α α' do
     throwError "type mismatch{indentExpr e}\n{← mkHasTypeButIsExpectedMsg α' α}"
 
 open Meta in
+/-- Check that the claim `$lhs =Q $rhs` is actually true; that the two terms are defeq. -/
 protected def QuotedDefEq.check (e : @QuotedDefEq u α lhs rhs) : MetaM Unit := do
   α.check
   lhs.check
@@ -63,6 +65,7 @@ protected def QuotedDefEq.check (e : @QuotedDefEq u α lhs rhs) : MetaM Unit := 
     throwError "{lhs} and {rhs} are not defeq"
 
 open Meta in
+/-- Check that the claim `$u =QL $v` is actually true; that the two levels are defeq. -/
 protected def QuotedLevelDefEq.check (e : QuotedLevelDefEq lhs rhs) : MetaM Unit := do
   unless ← isLevelDefEq lhs rhs do
     throwError "{lhs} and {rhs} are not defeq"

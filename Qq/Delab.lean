@@ -1,4 +1,8 @@
 import Qq.Macro
+/-!
+# Delaborators for `q()` and `Q()` notation
+-/
+
 open Qq Lean Elab PrettyPrinter.Delaborator SubExpr Meta Impl Std
 
 namespace Qq

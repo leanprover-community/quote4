@@ -2,6 +2,58 @@ import Qq.Macro
 import Qq.MetaM
 import Qq.ForLean.Do
 import Qq.SortLocalDecls
+/-!
+# `~q()` matching
+
+This file extends the syntax of `match` and `let` to permit matching terms of type `Q(α)` using
+`~q(<pattern>)`, just as terms of type `Syntax` can be matched with `` `(<pattern>) ``.
+Compare to the builtin `match_expr` and `let_expr`, `~q()` matching:
+* is type-safe, and so helps avoid many mistakes in match patterns
+* matches by definitional equality, rather than expression equality
+* supports compound expressions, not just a single application
+
+See `Qq.matcher` for a brief syntax summary.
+
+## Matching typeclass instances
+
+For a more complete example, consider
+```
+def isCanonicalAdd {u : Level} {α : Q(Type u)} (inst : Q(Add $α)) (x : Q($α)) :
+    MetaM <| Option (Q($α) × Q($α)) := do
+  match x with
+  | ~q($a + $b) => return some (a, b)
+  | _ => return none
+```
+Here, the `~q($a + $b)` match is specifically matching the addition against the provided `inst`
+instance, as this is what is being used to elaborate the `+`.
+
+If the intent is to match an _arbitrary_ `Add α` instance in `x`,
+then you must match this with a `$inst` antiquotation:
+```
+def isAdd {u : Level} {α : Q(Type u)} (x : Q($α)) :
+    MetaM <| Option (Q(Add $α) × Q($α) × Q($α)) := do
+  match x with
+  | ~q(@HAdd.hAdd _ _ _ (@instHAdd _ $inst) $a $b) => return some (inst, a, b)
+  | _ => return none
+```
+
+## Matching `Expr`s
+
+By itself, `~q()` can only match against terms of the form `Q($α)`.
+To match an `Expr`, it must first be converted to Qq with `Qq.inferTypeQ`.
+
+For instance, to match an arbitrary expression for `n + 37` where `n : Nat`,
+we can write
+```
+def isAdd37 (e : Expr) : MetaM (Option Q(Nat)) := do
+  let ⟨1, ~q(Nat), ~q($n + 37)⟩ ← inferTypeQ e | return none
+  return some n
+```
+This is performing three sequential matches: first that `e` is in `Sort 1`,
+then that the type of `e` is `Nat`,
+then finally that `e` is of the right form.
+This syntax can be used in `match` too.
+-/
 
 open Lean in
 partial def Lean.Syntax.stripPos : Syntax → Syntax
@@ -274,7 +326,40 @@ section
 
 open Impl
 
-scoped syntax "~q(" term ")" : term
+/--
+`Qq`s expression matching in `MetaM`, up to reducible defeq.
+
+This syntax is valid in `match`, `let`, and `if let`, but not `fun`.
+
+The usage is very similar to the builtin `Syntax`-matching that uses `` `(<pattern>)`` notation.
+As an example, consider matching against a `n : Q(ℕ)`, which can be written
+
+* With a `match` expression,
+  ```
+  match n with
+  | ~q(Nat.gcd $x $y) => handleGcd x y
+  | ~q($x + $y) => handleAdd x y
+  | _ => throwError "no match"
+  ```
+* With a `let` expression (if there is a single match)
+  ```
+  let ~q(Nat.gcd $x $y) := n | throwError "no match"
+  handleGcd x y
+  ```
+* With an `if let` statement
+  ```
+  if let ~q(Nat.gcd $x $y) := n then
+    handleGcd x y
+  else if let ~q($x + $y) := n then
+    handleAdd x y
+  else
+    throwError "no match"
+  ```
+
+In addition to the obvious `x` and `y` captures,
+in the example above `~q` also inserts into the context a term of type `$n =Q Nat.gcd $x $y`.
+-/
+scoped syntax (name := matcher) "~q(" term ")" : term
 
 partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($_)) => true
