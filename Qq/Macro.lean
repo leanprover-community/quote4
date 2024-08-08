@@ -32,19 +32,19 @@ structure UnquoteState where
   mvars : List (Expr × MVarSynth) := []
 
   /-- Maps quoted expressions (of type Level) in the old context to level parameter names in the new context -/
-  levelSubst : HashMap Expr Level := {}
+  levelSubst : Std.HashMap Expr Level := {}
 
   /-- Maps quoted expressions (of type Expr) in the old context to expressions in the new context -/
-  exprSubst : HashMap Expr Expr := {}
+  exprSubst : Std.HashMap Expr Expr := {}
 
   /-- New unquoted local context -/
   unquoted := LocalContext.empty
 
   /-- Maps free variables in the new context to expressions in the old context (of type Expr) -/
-  exprBackSubst : HashMap Expr ExprBackSubstResult := {}
+  exprBackSubst : Std.HashMap Expr ExprBackSubstResult := {}
 
   /-- Maps free variables in the new context to levels in the old context (of type Level) -/
-  levelBackSubst : HashMap Level Expr := {}
+  levelBackSubst : Std.HashMap Level Expr := {}
 
   /-- New free variables in the new context that were newly introduced for irreducible expressions. -/
   abstractedFVars : Array FVarId := #[]
@@ -133,7 +133,7 @@ mutual
 
 partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   let e ← whnf e
-  if let some l := (← get).levelSubst.find? e then
+  if let some l := (← get).levelSubst[e]? then
     return l
   if e.isAppOfArity ``Level.zero 0 then pure .zero
   else if e.isAppOfArity ``Level.succ 1 then return .succ (← unquoteLevel (e.getArg! 0))
@@ -236,7 +236,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   let e ← instantiateMVars (← whnf e)
   let eTy ← whnfR (← inferType e)
   if eTy.isAppOfArity ``Quoted 1 then
-    if let some e' := (← get).exprSubst.find? e then
+    if let some e' := (← get).exprSubst[e]? then
       return e'
     if ← isAssignablePattern e then
       return ← unquoteExprMVar e
@@ -359,13 +359,13 @@ def quoteLevel : Level → QuoteM Expr
   | .zero => return .const ``Level.zero []
   | .succ u => return mkApp (.const ``Level.succ []) (← quoteLevel u)
   | l@(.mvar ..) => do
-    if let some e := (← read).levelBackSubst.find? l then
+    if let some e := (← read).levelBackSubst[l]? then
       return e
     throwError "cannot quote level mvar {l}"
   | .max a b => return mkApp2 (.const ``Level.max []) (← quoteLevel a) (← quoteLevel b)
   | .imax a b => return mkApp2 (.const ``Level.imax []) (← quoteLevel a) (← quoteLevel b)
   | l@(.param n) => do
-    match (← read).levelBackSubst.find? l with
+    match (← read).levelBackSubst[l]? with
       | some e => return e
       | none =>
         match ← isLevelFVar n with
@@ -382,12 +382,12 @@ def quoteLevelList : List Level → QuoteM Expr
 partial def quoteExpr : Expr → QuoteM Expr
   | .bvar i => return mkApp (.const ``Expr.bvar []) (toExpr i)
   | e@(.fvar ..) => do
-    let some r := (← read).exprBackSubst.find? e | throwError "unknown free variable {e}"
+    let some r := (← read).exprBackSubst[e]? | throwError "unknown free variable {e}"
     match r with
     | .quoted r => return r
     | .unquoted r => quoteExpr r
   | e@(.mvar ..) => do
-    if let some (.quoted r) := (← read).exprBackSubst.find? e then return r
+    if let some (.quoted r) := (← read).exprBackSubst[e]? then return r
     throwError "resulting term contains metavariable {e}"
   | .sort u => return mkApp (.const ``Expr.sort []) (← quoteLevel u)
   | .const n ls => return mkApp2 (.const ``Expr.const []) (toExpr n) (← quoteLevelList ls)
