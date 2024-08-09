@@ -17,7 +17,7 @@ def isRedundantLocalInst? (inst : FVarId) : MetaM (Option Expr) := do
 
 def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
   for {fvar, ..} in ← withUnquotedLCtx getLocalInstances do
-    if let some (.quoted (.fvar quotedFVar)) := (← read).exprBackSubst.find? fvar then
+    if let some (.quoted (.fvar quotedFVar)) := (← read).exprBackSubst[fvar]? then
       if (← quotedFVar.getDecl).hasValue then continue
       if let some result ← withUnquotedLCtx do isRedundantLocalInst? fvar.fvarId! then
         return (fvar.fvarId!, result)
