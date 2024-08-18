@@ -193,14 +193,18 @@ def mkNAryFunctionType : Nat → MetaM Expr
   | n+1 => do withLocalDeclD `x (← mkFreshTypeMVar) fun x => do
     mkForallFVars #[x] (← mkNAryFunctionType n)
 
+inductive PatternVarInfo where
+  | term (arity : Nat) (mvar : Expr) (stx : Term)
+  | level (mvar : Level) (stx : TSyntax `level)
+
 structure PatternVar where
   name : Name
-  /-- Pattern variables can be functions; if so, this is their arity. -/
-  arity : Nat
-  mvar : Expr
-  stx : Term
+  info : PatternVarInfo
 
 partial def getPatVars (pat : Term) : StateT (Array PatternVar) TermElabM Term := do
+  if let `($n:ident.{$us,*}) := pat then
+    let us ← us.getElems.mapM (getLevelPatVars ⟨·⟩)
+    return ← `($n.{$us,*})
   match pat with
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
     | _ => if isPatVar pat then return ← mkMVar pat #[]
@@ -210,19 +214,39 @@ partial def getPatVars (pat : Term) : StateT (Array PatternVar) TermElabM Term :
 
   where
 
+    getLevelPatVars (pat : TSyntax `level) : StateT (Array PatternVar) TermElabM (TSyntax `level) := do
+      if isPatVar pat then return ← mkLevelMVar pat
+      match pat with
+      | ⟨.node info kind args⟩ =>
+        return ⟨.node info kind (← args.mapM (getLevelPatVars ⟨·⟩))⟩
+      | pat => return pat
+
     isPatVar (fn : Syntax) : Bool :=
-      fn.isAntiquot && !fn.isEscapedAntiquot && fn.getAntiquotTerm.isIdent &&
+      fn.isAntiquot && !fn.isEscapedAntiquot && fn[2].isIdent &&
       fn.getAntiquotTerm.getId.isAtomic
 
-    mkMVar (fn : Syntax) (args : Array Term) : StateT _ TermElabM Term := do
+    mkMVar (fn : Term) (args : Array Term) : StateT _ TermElabM Term := do
       let args ← args.mapM getPatVars
-      let id := fn.getAntiquotTerm.getId
+      let id := fn.raw.getAntiquotTerm.getId
       withFreshMacroScope do
         if let some p := (← get).find? fun p => p.name == id then
-          return ← `($(p.stx) $args*)
+          let .term _ _ stx := p.info | failure
+          return ← `($stx $args*)
         let mvar ← elabTerm (← `(?m)).1.stripPos (← mkNAryFunctionType args.size)
-        modify (·.push ⟨id, args.size, mvar, ← `(?m)⟩)
+        modify (·.push ⟨id, .term args.size mvar (← `(?m))⟩)
         `(?m $args*)
+
+    mkLevelMVar (fn : TSyntax `level) : StateT (Array PatternVar) TermElabM (TSyntax `level) := do
+      let id := fn.raw.getAntiquotTerm.getId
+      withFreshMacroScope do
+        if let some p := (← get).find? fun p => p.name == id then
+          let .level _ stx := p.info | failure
+          return stx
+        let lmvar ← mkFreshLevelMVar
+        let stx ← `(level| $(mkIdent lmvar.mvarId!.name))
+        modify (·.push ⟨id, .level lmvar stx⟩)
+        return stx
+
 def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
     (levelNames : List Name) : TermElabM (Expr × Array LocalDecl × Array Name) :=
   withLCtx lctx localInsts do
@@ -235,18 +259,23 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
 
           let mctx ← getMCtx
           let levelNames ← getLevelNames
+          for patVar in patVars do
+            if let .level lmvar _stx := patVar.info then
+              Lean.logInfo m!"Got level mvar {lmvar} / {levelNames}"
+          Lean.logInfo m!"Got levels: {levelNames}"
           let r := mctx.levelMVarToParam levelNames.elem (fun _ => false) pat `u 1
           setMCtx r.mctx
 
           let mut newDecls := #[]
 
           for patVar in patVars do
-            assert! patVar.mvar.isMVar
-            let fvarId := FVarId.mk (← mkFreshId)
-            let type ← inferType patVar.mvar
-            newDecls := newDecls.push $
-              LocalDecl.cdecl default fvarId patVar.name type .default .default
-            patVar.mvar.mvarId!.assign (.fvar fvarId)
+            if let .term _arity mvar _stx := patVar.info then
+              assert! mvar.isMVar
+              let fvarId := FVarId.mk (← mkFreshId)
+              let type ← inferType mvar
+              newDecls := newDecls.push $
+                LocalDecl.cdecl default fvarId patVar.name type .default .default
+              mvar.mvarId!.assign (.fvar fvarId)
 
           for newMVar in ← getMVars pat do
             let fvarId := FVarId.mk (← mkFreshId)
@@ -473,3 +502,10 @@ macro_rules
     `(doElem| (do $items:doSeqItem*))
 
 end
+
+universe u
+
+open Lean.Syntax
+run_meta do
+  have u : Level := 0
+  let x := q(@id.{$u})

@@ -588,6 +588,7 @@ partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
   | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot' term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot' term))
+  | `($n:ident.{$us,*}) => do `($n.{$(← us.getElems.mapM floatLevelAntiquot'),*})
   | stx => do
     if let (some (kind, _pseudo), false) := (stx.antiquotKind?, stx.isEscapedAntiquot) then
       let term := stx.getAntiquotTerm
@@ -626,5 +627,9 @@ macro_rules
     for (a, ty, lift) in lifts do
       t ← `(let $a:ident : $ty := $lift; $t)
     pure t
+
+run_meta do
+  let u : Level := 3
+  Lean.logInfo m!"{q(@id.{$u})}"
 
 end Impl
