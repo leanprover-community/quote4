@@ -9,7 +9,7 @@ This file provides the main feature of `Qq`; the `q( )` and `Q( )` macros,
 which are available with `open scoped Qq`.
 -/
 
-open Lean Meta Std
+open Lean Meta
 
 namespace Qq
 
