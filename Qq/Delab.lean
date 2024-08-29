@@ -51,7 +51,7 @@ def withDelabQuoted (k : StateT UnquoteState DelabM Term) : Delab :=
   let showNested := `pp.qq._nested
   if (← getOptions).get showNested true then
     for fv in (← get).abstractedFVars.reverse do
-      if let some (.quoted expr) := (← get).exprBackSubst.find? (.fvar fv) then
+      if let some (.quoted expr) := (← get).exprBackSubst[Expr.fvar fv]? then
       if let some decl := (← get).unquoted.find? fv then
       if (res.1.find? (·.getId == decl.userName)).isSome then
       if let some name := removeDollar decl.userName then
