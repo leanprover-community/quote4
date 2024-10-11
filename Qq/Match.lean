@@ -193,7 +193,14 @@ def mkNAryFunctionType : Nat → MetaM Expr
   | n+1 => do withLocalDeclD `x (← mkFreshTypeMVar) fun x => do
     mkForallFVars #[x] (← mkNAryFunctionType n)
 
-partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr × Term)) TermElabM Term := do
+structure PatternVar where
+  name : Name
+  /-- Pattern variables can be functions; if so, this is their arity. -/
+  arity : Nat
+  mvar : Expr
+  stx : Term
+
+partial def getPatVars (pat : Term) : StateT (Array PatternVar) TermElabM Term := do
   match pat with
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
     | _ => if isPatVar pat then return ← mkMVar pat #[]
@@ -211,12 +218,11 @@ partial def getPatVars (pat : Term) : StateT (Array (Name × Nat × Expr × Term
       let args ← args.mapM getPatVars
       let id := fn.getAntiquotTerm.getId
       withFreshMacroScope do
-        if let some (_, _, _, m) := (← get).find? fun (n, _) => n == id then
-          return ← `($m $args*)
+        if let some p := (← get).find? fun p => p.name == id then
+          return ← `($(p.stx) $args*)
         let mvar ← elabTerm (← `(?m)).1.stripPos (← mkNAryFunctionType args.size)
-        modify (·.push (id, args.size, mvar, ← `(?m)))
+        modify (·.push ⟨id, args.size, mvar, ← `(?m)⟩)
         `(?m $args*)
-
 def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
     (levelNames : List Name) : TermElabM (Expr × Array LocalDecl × Array Name) :=
   withLCtx lctx localInsts do
@@ -234,13 +240,13 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
 
           let mut newDecls := #[]
 
-          for (patVar, _, mvar, _) in patVars do
-            assert! mvar.isMVar
+          for patVar in patVars do
+            assert! patVar.mvar.isMVar
             let fvarId := FVarId.mk (← mkFreshId)
-            let type ← inferType mvar
+            let type ← inferType patVar.mvar
             newDecls := newDecls.push $
-              LocalDecl.cdecl default fvarId patVar type .default .default
-            mvar.mvarId!.assign (.fvar fvarId)
+              LocalDecl.cdecl default fvarId patVar.name type .default .default
+            patVar.mvar.mvarId!.assign (.fvar fvarId)
 
           for newMVar in ← getMVars pat do
             let fvarId := FVarId.mk (← mkFreshId)
