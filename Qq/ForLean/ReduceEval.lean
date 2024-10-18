@@ -29,8 +29,6 @@ instance {n : Nat} : ReduceEval (BitVec n) where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``BitVec.ofFin 2 then
-      have : 2^n - 1 + 1 = 2^n := Nat.sub_one_add_one_eq_of_pos (Nat.two_pow_pos n)
-      let _ : ReduceEval (Fin (2^n)) := this ▸ (inferInstanceAs <| ReduceEval (Fin (2^n - 1 + 1)))
       pure ⟨(← reduceEval (e.getArg! 1))⟩
     else
       throwFailedToEval e
