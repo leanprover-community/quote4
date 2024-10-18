@@ -25,11 +25,18 @@ instance [NeZero n] : ReduceEval (Fin n) where
     else
       throwFailedToEval e
 
+instance {n : Nat} : ReduceEval (BitVec n) where
+  reduceEval := fun e => do
+    let e ← whnf e
+    if e.isAppOfArity ``BitVec.ofFin 2 then
+      pure ⟨(← reduceEval (e.getArg! 1))⟩
+    else
+      throwFailedToEval e
+
 instance : ReduceEval UInt64 where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``UInt64.mk 1 then
-      let _ : ReduceEval (Fin UInt64.size) := inferInstanceAs <| ReduceEval (Fin (_ + 1))
       pure ⟨(← reduceEval (e.getArg! 0))⟩
     else
       throwFailedToEval e
