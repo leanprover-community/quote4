@@ -17,11 +17,11 @@ private partial def evalList [ReduceEval α] (e : Expr) : MetaM (List α) := do
 
 instance [ReduceEval α] : ReduceEval (List α) := ⟨evalList⟩
 
-instance : ReduceEval (Fin (n+1)) where
+instance [NeZero n] : ReduceEval (Fin n) where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``Fin.mk 3 then
-      return Fin.ofNat (← reduceEval (e.getArg! 1))
+      return Fin.ofNat' _ (← reduceEval (e.getArg! 1))
     else
       throwFailedToEval e
 
