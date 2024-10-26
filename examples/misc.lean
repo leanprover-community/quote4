@@ -19,3 +19,14 @@ example : Q(let x := 5; x = x) := q(by simp)
 
 def foo' (n : Nat) : Q(Q($($n) = $($n))) := q(q(by simp))
 #eval foo' 3
+
+#eval (Meta.ReduceEval.reduceEval q(15 + 7 : Fin (2 ^ 4)) : MetaM (Fin (2 ^ 4)))
+#eval (Meta.ReduceEval.reduceEval q(15#4 + 7#4 : BitVec 4) : MetaM (BitVec 4))
+#eval (Meta.ReduceEval.reduceEval q(15 + 7 : UInt64) : MetaM UInt64)
+
+/--
+error: typeclass instance problem is stuck, it is often due to metavariables
+  Meta.ReduceEval ?m.2036
+-/
+#guard_msgs in
+#eval Meta.ReduceEval.reduceEval q(15 : USize)
