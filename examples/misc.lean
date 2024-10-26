@@ -25,8 +25,10 @@ def foo' (n : Nat) : Q(Q($($n) = $($n))) := q(q(by simp))
 #eval (Meta.ReduceEval.reduceEval q(15 + 7 : UInt64) : MetaM UInt64)
 
 /--
-error: typeclass instance problem is stuck, it is often due to metavariables
-  Meta.ReduceEval ?m.2036
+error: reduceEval: failed to evaluate argument
+  match (USize.toBitVec 15).toNat + (USize.toBitVec 7).toNat, 2 ^ System.Platform.numBits with
+  | 0, x => 0
+  | n@h:n_1.succ, m => if m ≤ n then n.modCore m else n
 -/
 #guard_msgs in
-#eval Meta.ReduceEval.reduceEval q(15 : USize)
+#eval (Meta.ReduceEval.reduceEval q(15 + 7 : USize) : MetaM USize)
