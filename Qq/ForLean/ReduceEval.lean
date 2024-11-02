@@ -8,7 +8,7 @@ def throwFailedToEval (e : Expr) : MetaM α :=
 
 private partial def evalList [ReduceEval α] (e : Expr) : MetaM (List α) := do
   let e ← whnf e
-  let .const c _ ← pure e.getAppFn | throwFailedToEval e
+  let .const c _ := e.getAppFn | throwFailedToEval e
   let nargs := e.getAppNumArgs
   match c, nargs with
     | ``List.nil, 1 => pure []

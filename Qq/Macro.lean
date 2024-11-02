@@ -254,7 +254,7 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
     }
     return fv
   let e ← whnf e
-  let .const c _ ← pure e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
+  let .const c _ := e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
   let nargs := e.getAppNumArgs
   match c, nargs with
     | ``betaRev', 2 => return betaRev' (← unquoteExpr (e.getArg! 0)) (← unquoteExprList (e.getArg! 1))
