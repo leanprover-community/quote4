@@ -253,6 +253,10 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
       abstractedFVars := s.abstractedFVars.push fvarId
     }
     return fv
+  if let .fvar _ := e then
+    Lean.logWarning m!"Interpolated variable `{e}` should have type `Q(_)` not `{eTy}`. \
+      Adding `have {e} : Q(_) := {e}` may fix this."
+    return e
   let e ← whnf e
   let .const c _ := e.getAppFn | throwError "unquoteExpr: {e} : {eTy}"
   let nargs := e.getAppNumArgs
