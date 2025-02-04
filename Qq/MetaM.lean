@@ -85,3 +85,26 @@ def assertDefEqQ {α : Q(Sort $u)} (a b : Q($α)) : MetaM (PLift (QuotedDefEq a 
   match ← isDefEqQ a b with
   | .defEq witness => return ⟨witness⟩
   | .notDefEq => throwError "{a} is not definitionally equal to{indentExpr b}"
+
+/-- The result of `Qq.isLevelDefEqQ`; `MaybeLevelDefEq u v` is an optional version of `$u =QL $v`. -/
+inductive MaybeLevelDefEq (u v : Level) where
+  | defEq : QuotedLevelDefEq u v → MaybeLevelDefEq u v
+  | notDefEq : MaybeLevelDefEq u v
+
+instance : Repr (MaybeLevelDefEq u v) where
+  reprPrec := fun
+    | .defEq _, prec => Repr.addAppParen "defEq _" prec
+    | .notDefEq, _ => "notDefEq"
+
+/-- A version of `Lean.Meta.isLevelDefEq` which returns a strongly-typed witness rather than a bool. -/
+def isLevelDefEqQ (u v : Level) : MetaM (MaybeLevelDefEq u v) := do
+  if ← isLevelDefEq u v then
+    return .defEq ⟨⟩
+  else
+    return .notDefEq
+
+/-- Like `Qq.isLevelDefEqQ`, but throws an error if not defeq. -/
+def assertLevelDefEqQ (u v : Level) : MetaM (PLift (QuotedLevelDefEq u v)) := do
+  match ← isLevelDefEqQ u v with
+  | .defEq witness => return ⟨witness⟩
+  | .notDefEq => throwError "{u} and {v} are not definitionally equal"
