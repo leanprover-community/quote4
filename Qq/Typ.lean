@@ -38,6 +38,7 @@ protected abbrev Quoted.ty (t : Quoted α) : Expr := α
 You should usually write this using the notation `$lhs =Q $rhs`.
 -/
 structure QuotedDefEq {α : Quoted (.sort u)} (lhs rhs : Quoted α) : Prop where
+  /-- For a safer constructor, see `Qq.assertDefEqQ`. -/
   unsafeIntro ::
 
 /--
@@ -46,6 +47,7 @@ structure QuotedDefEq {α : Quoted (.sort u)} (lhs rhs : Quoted α) : Prop where
 You should usually write this using the notation `$u =QL $v`.
 -/
 structure QuotedLevelDefEq (u v : Level) : Prop where
+  /-- For a safer constructor, see `Qq.assertLevelDefEqQ`. -/
   unsafeIntro ::
 
 open Meta in
