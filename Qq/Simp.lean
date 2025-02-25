@@ -1,4 +1,4 @@
-import Mathlib.Util.Qq
+import Qq.MetaM
 
 /-!
 # Qq integration for `simproc`s
