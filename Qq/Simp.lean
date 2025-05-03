@@ -51,7 +51,7 @@ abbrev SimprocQ : Type := ∀ (u : Level) (α : Q(Sort u)) (e : Q($α)), Meta.Si
 /-- Build a simproc with Qq-enabled typechecking of inputs and outputs.
 
 This calls `inferTypeQ` on the expression and passes the arguments to `proc`. -/
-def Simproc.ofQ (proc : SimprocQ) : Simproc := fun e => do
+@[inline] def Simproc.ofQ (proc : SimprocQ) : Simproc := fun e => do
   let ⟨u, α, e⟩ ← inferTypeQ e
   proc u α e
 
