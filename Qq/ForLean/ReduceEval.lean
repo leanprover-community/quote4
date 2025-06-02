@@ -21,7 +21,7 @@ instance [NeZero n] : ReduceEval (Fin n) where
   reduceEval := fun e => do
     let e ← whnf e
     if e.isAppOfArity ``Fin.mk 3 then
-      return Fin.ofNat' _ (← reduceEval (e.getArg! 1))
+      return Fin.ofNat _ (← reduceEval (e.getArg! 1))
     else
       throwFailedToEval e
 
