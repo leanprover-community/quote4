@@ -307,9 +307,29 @@ def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
 
 def unquoteLCtx : UnquoteM Unit := do
   unquoteLevelLCtx
+  let mut latestIdForName : PersistentHashMap Name FVarId := {}
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
+    let userName := addDollar ldecl.userName
+
+    /-
+      Ensure that names which (in the original context) are shadowed by the currently considered
+      variable are also inaccessible in the quotation context, even if the variable is not added
+      to the new context
+    -/
+    if let some id := latestIdForName.find? userName then
+      -- Shadowed names are made inaccessible by making them hygienic
+      let hygienicName ← MonadQuotation.addMacroScope userName
+      modify fun s => { s with
+          unquoted := s.unquoted.modifyLocalDecl id fun shadowed =>
+            if shadowed.userName == userName then
+              shadowed.setUserName hygienicName
+            else
+              shadowed
+        }
+    latestIdForName := latestIdForName.insert userName ldecl.fvarId
+
     let whnfTy ← withReducible <| whnf ty
     if whnfTy.isAppOfArity ``QuotedLevelDefEq 2 || whnfTy.isAppOfArity ``Level 0 then
       pure () -- see above
@@ -318,7 +338,7 @@ def unquoteLCtx : UnquoteM Unit := do
       let newTy ← unquoteExpr qTy
       modify fun s => { s with
         unquoted := s.unquoted.addDecl $
-          LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo ldecl.kind
+          LocalDecl.cdecl ldecl.index ldecl.fvarId userName newTy ldecl.binderInfo ldecl.kind
         exprBackSubst := s.exprBackSubst.insert fv (.quoted fv)
         exprSubst := s.exprSubst.insert fv fv
       }
@@ -330,7 +350,7 @@ def unquoteLCtx : UnquoteM Unit := do
       let eqTy := mkApp3 (.const ``Eq [tyLevel]) ty lhs rhs
       let unquoted := (← get).unquoted
       let unquoted := unquoted.addDecl <|
-        .cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) eqTy ldecl.binderInfo ldecl.kind
+        .cdecl ldecl.index ldecl.fvarId userName eqTy ldecl.binderInfo ldecl.kind
       let unquoted := (← withUnquotedLCtx do makeDefEq lhs rhs).getD unquoted
       modify fun s => { s with
         unquoted
@@ -341,7 +361,7 @@ def unquoteLCtx : UnquoteM Unit := do
       let .succ u ← getLevel ty | pure ()
       let LOption.some inst ← trySynthInstance (mkApp (.const ``ToExpr [u]) ty) | pure ()
       modify fun s => { s with
-        unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
+        unquoted := s.unquoted.addDecl (ldecl.setUserName userName)
         exprBackSubst := s.exprBackSubst.insert fv (.quoted (mkApp3 (.const ``toExpr [u]) ty inst fv))
         exprSubst := s.exprSubst.insert fv fv
       }
