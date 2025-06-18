@@ -197,7 +197,7 @@ def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
   for y in toRevert do if bFVars.fvarSet.contains y then return none
   let oldLCtx ← getLCtx
   let newLCtx := toRevert.foldl (init := oldLCtx) (·.erase ·)
-  let newLCtx := newLCtx.addDecl <| .ldecl aIdx aFVarId aUserName aType b (nonDep := false) aKind
+  let newLCtx := newLCtx.addDecl <| .ldecl aIdx aFVarId aUserName aType b (nondep := false) aKind
   let newLCtx := toRevert.filter (· != a) |>.foldl (init := newLCtx) (·.addDecl <| oldLCtx.get! ·)
   return newLCtx
 
