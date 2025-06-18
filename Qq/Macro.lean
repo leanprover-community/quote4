@@ -191,13 +191,15 @@ def mkAbstractedName (e : Expr) : UnquoteM Name := do
   e.betaRev revArgs.toArray
 
 def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
-  let .cdecl aIdx aFVarId aUserName aType _ aKind ← a.getDecl | return none
+  let decl ← a.getDecl
+  if decl.isLet then
+    return none
   let bFVars := (← b.collectFVars.run {}).2
   let toRevert := (← collectForwardDeps #[.fvar a] (preserveOrder := true)).map (·.fvarId!)
   for y in toRevert do if bFVars.fvarSet.contains y then return none
   let oldLCtx ← getLCtx
   let newLCtx := toRevert.foldl (init := oldLCtx) (·.erase ·)
-  let newLCtx := newLCtx.addDecl <| .ldecl aIdx aFVarId aUserName aType b (nondep := false) aKind
+  let newLCtx := newLCtx.mkLetDecl decl.fvarId decl.userName decl.type b (kind := decl.kind)
   let newLCtx := toRevert.filter (· != a) |>.foldl (init := newLCtx) (·.addDecl <| oldLCtx.get! ·)
   return newLCtx
 
@@ -317,8 +319,8 @@ def unquoteLCtx : UnquoteM Unit := do
       let qTy := whnfTy.appArg!
       let newTy ← unquoteExpr qTy
       modify fun s => { s with
-        unquoted := s.unquoted.addDecl $
-          LocalDecl.cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo ldecl.kind
+        unquoted := s.unquoted.mkLocalDecl
+          ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo ldecl.kind
         exprBackSubst := s.exprBackSubst.insert fv (.quoted fv)
         exprSubst := s.exprSubst.insert fv fv
       }
@@ -329,8 +331,8 @@ def unquoteLCtx : UnquoteM Unit := do
       let rhs ← unquoteExpr (whnfTy.getArg! 3)
       let eqTy := mkApp3 (.const ``Eq [tyLevel]) ty lhs rhs
       let unquoted := (← get).unquoted
-      let unquoted := unquoted.addDecl <|
-        .cdecl ldecl.index ldecl.fvarId (addDollar ldecl.userName) eqTy ldecl.binderInfo ldecl.kind
+      let unquoted := unquoted.mkLocalDecl
+        ldecl.fvarId (addDollar ldecl.userName) eqTy ldecl.binderInfo ldecl.kind
       let unquoted := (← withUnquotedLCtx do makeDefEq lhs rhs).getD unquoted
       modify fun s => { s with
         unquoted
