@@ -1,5 +1,10 @@
 import Qq.Macro
 import Lean
+/-!
+# `run_tacq` and `by_elabq`
+
+This file provides Qq analogues to `by_elab` and `run_tac`.
+-/
 
 namespace Qq
 open Lean Meta Elab Tactic
