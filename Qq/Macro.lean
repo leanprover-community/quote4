@@ -426,8 +426,7 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
     let fid ← mkFreshFVarId
     quotedCtx := quotedCtx.mkLocalDecl
       fid nm (mkConst ``Level) .default .default
-    modify (fun qctx : Qq.Impl.UnquoteState => {qctx with
-      levelBackSubst := qctx.levelBackSubst.insert (.param nm) (.fvar fid)})
+    modify fun s => { s with levelBackSubst := s.levelBackSubst.insert (.param nm) (.fvar fid) }
     assignments := assignments.push (toExpr (Level.param nm))
   for decl in ctx do
     if decl.kind != .default then continue
