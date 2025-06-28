@@ -55,11 +55,9 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
   code
 
 /--
-`run_tacq` is a Qq-analogue to `run_tac`
-Executes an arbitrary `TacticM` code. Moreover, the local
-context can be directly accessed as quoted expressions.
-Optionally, user can also save the annotated goal using
-syntax `run_tacq $g =>`
+`run_tacq` is the Qq analogue to `run_tac` which allows executing arbitrary `TacticM` code.
+In contrast to `run_tac`, the local context of the main goal can be directly accessed as quoted
+expressions. Optionally, the annotated goal can also be saved using the syntax `run_tacq $g =>`.
 Example:
 ```
 example (a b : Nat) (h : a = b) : True := by
