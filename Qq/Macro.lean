@@ -414,6 +414,42 @@ partial def quoteExpr : Expr → QuoteM Expr
   | .proj n i e => return mkApp3 (.const ``Expr.proj []) (toExpr n) (toExpr i) (← quoteExpr e)
   | .mdata _ e => quoteExpr e
 
+/--
+Translates an arbitrary local context to a context of
+Q-annotated expressions. Used by `by_elabq` and `run_tacq`.
+-/
+def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
+    Qq.Impl.UnquoteM (LocalContext × Array Expr) := do
+  let mut quotedCtx := LocalContext.empty
+  let mut assignments : Array Expr := #[]
+  for nm in levelNames do
+    let fid ← mkFreshFVarId
+    quotedCtx := quotedCtx.mkLocalDecl
+      fid nm (mkConst ``Level) .default .default
+    modify (fun qctx : Qq.Impl.UnquoteState => {qctx with
+      levelBackSubst := qctx.levelBackSubst.insert (.param nm) (.fvar fid)})
+    assignments := assignments.push (toExpr (Level.param nm))
+  for decl in ctx do
+    if decl.kind != .default then continue
+    let fid ← mkFreshFVarId
+    let type ← instantiateMVars decl.type
+    let quotedType ← quoteExpr type
+    quotedCtx := quotedCtx.mkLocalDecl fid decl.userName
+      (mkApp (mkConst ``Quoted) quotedType) decl.binderInfo
+    assignments := assignments.push (toExpr (Expr.fvar decl.fvarId))
+    if decl.isLet then
+      let eqFid ← mkFreshFVarId
+      let level ← getLevel type
+      let quotedLevel ← (quoteLevel (← instantiateLevelMVars level))
+      let quotedValue ← (quoteExpr (← instantiateMVars decl.value))
+      quotedCtx := quotedCtx.mkLocalDecl eqFid (← mkFreshUserName `eq)
+        (mkApp4 (mkConst ``QuotedDefEq) quotedLevel quotedType (.fvar fid) quotedValue)
+      assignments := assignments.push
+        (mkApp4 (mkConst ``QuotedDefEq.unsafeIntro) quotedLevel quotedType (.fvar fid) quotedValue)
+    modify fun qctx => {qctx with
+      exprBackSubst := qctx.exprBackSubst.insert (.fvar decl.fvarId) (.quoted (.fvar fid)) }
+  return (quotedCtx, assignments)
+
 def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
   if ty.isAppOf ``Quoted then
