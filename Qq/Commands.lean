@@ -21,10 +21,9 @@ def mkLetFVarsFromValues (values : Array Expr) (body : Expr) : MetaM Expr := do
     mkLetFVars fvars body
 
 /--
-`by_elabq` is the Qq analogue to `by_elab`
-Executes arbitrary `TermElabM` code in place of a term.
-Moreover, all variables available in the local context are accessible as
-quoted expressions, and the return value is Q-annotated as well.
+`by_elabq` is the Qq analogue to `by_elab` which allows executing arbitrary `TermElabM` code in
+place of a term. In contrast to `by_elab`, the local context can be directly accessed as quoted
+expressions and the return type is Q-annotated.
 Example:
 ```
 def f (x : Prop) [Decidable x] : Int :=
