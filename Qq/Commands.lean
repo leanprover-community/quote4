@@ -71,10 +71,10 @@ example (a b : Nat) (h : a = b) : True := by
 See also: `by_elabq`.
 -/
 scoped
-syntax "run_tacq" (ident "=>")? doSeq : tactic
+syntax "run_tacq" ident "=>" doSeq : tactic
+syntax "run_tacq" doSeq : tactic
 
-elab_rules : tactic
-| `(tactic| run_tacq $[$gi:ident =>]? $seq:doSeq) => do
+def runTacq (gi : Option Name) (seq : TSyntax `Lean.Parser.Term.doSeq) : TacticM Unit := do
   let goal ← try
     getMainGoal
   catch _ =>
@@ -88,8 +88,7 @@ elab_rules : tactic
       let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames
       match gi with
       | none => return (quotedCtx, assignments)
-      | some stx =>
-        let goalName := stx.1.getId
+      | some goalName =>
         let quotedTarget ← Qq.Impl.quoteExpr target
         let goalFid ← mkFreshFVarId
         let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName
@@ -101,5 +100,11 @@ elab_rules : tactic
       mkLetFVarsFromValues assignments body
     let code ← unsafe evalExpr (TacticM Unit) q(TacticM Unit) codeExpr
     code
+
+elab_rules : tactic
+| `(tactic| run_tacq $gi:ident => $seq:doSeq) => do
+  runTacq gi.getId seq
+| `(tactic| run_tacq $seq:doSeq) => do
+  runTacq none seq
 
 end Qq
