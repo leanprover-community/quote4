@@ -86,7 +86,7 @@ def runTacq (gi : Option Name) (seq : TSyntax `Lean.Parser.Term.doSeq) : TacticM
   goal.withContext do
     let lctx ← getLCtx
     let levelNames ← Term.getLevelNames
-    let target ← getMainTarget
+    let target ← instantiateMVars (← goal.getType)
     let (quotedCtx, assignments) ← liftMetaM <| StateT.run'
           (s := {mayPostpone := False}) do
       let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames
