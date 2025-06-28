@@ -445,8 +445,8 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
         (mkApp4 (mkConst ``QuotedDefEq) quotedLevel quotedType (.fvar fid) quotedValue)
       assignments := assignments.push
         (mkApp4 (mkConst ``QuotedDefEq.unsafeIntro) quotedLevel quotedType (.fvar fid) quotedValue)
-    modify fun qctx => {qctx with
-      exprBackSubst := qctx.exprBackSubst.insert (.fvar decl.fvarId) (.quoted (.fvar fid)) }
+    modify fun s => { s with
+      exprBackSubst := s.exprBackSubst.insert (.fvar decl.fvarId) (.quoted (.fvar fid)) }
   return (quotedCtx, assignments)
 
 def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
