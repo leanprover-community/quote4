@@ -72,10 +72,10 @@ example (a b : Nat) (h : a = b) : True := by
 ```
 See also: `by_elabq`.
 -/
-scoped syntax "run_tacq" ident "=>" doSeq : tactic
-scoped syntax "run_tacq" doSeq : tactic
+scoped syntax "run_tacq" (atomic(ident "=>"))? doSeq : tactic
 
-def runTacq (gi : Option Name) (seq : TSyntax `Lean.Parser.Term.doSeq) : TacticM Unit := do
+elab_rules : tactic
+| `(tactic| run_tacq $[$gi:ident =>]? $seq:doSeq) => do
   let goal ← try
     getMainGoal
   catch _ =>
@@ -92,7 +92,7 @@ def runTacq (gi : Option Name) (seq : TSyntax `Lean.Parser.Term.doSeq) : TacticM
       | some goalName =>
         let quotedTarget ← Qq.Impl.quoteExpr target
         let goalFid ← mkFreshFVarId
-        let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName
+        let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName.getId
           (mkApp (mkConst ``Quoted) quotedTarget) .default
         let assignments := assignments.push (toExpr (Expr.mvar goal))
         return (quotedCtx, assignments)
@@ -101,11 +101,5 @@ def runTacq (gi : Option Name) (seq : TSyntax `Lean.Parser.Term.doSeq) : TacticM
       mkLetFVarsFromValues assignments body
     let code ← unsafe evalExpr (TacticM Unit) q(TacticM Unit) codeExpr
     code
-
-elab_rules : tactic
-| `(tactic| run_tacq $gi:ident => $seq:doSeq) => do
-  runTacq gi.getId seq
-| `(tactic| run_tacq $seq:doSeq) => do
-  runTacq none seq
 
 end Qq
