@@ -35,7 +35,7 @@ example (a b : Nat) (_h : a = b) : True := by
     let t ← Lean.Meta.inferType _h
   trivial
 
-def assignQ {α : Q(Type)} (mvar : Q($α)) (val : Q($α)) : Lean.Meta.MetaM Unit :=
+def assignQ {α : Q(Sort u)} (mvar : Q($α)) (val : Q($α)) : Lean.Meta.MetaM Unit :=
   mvar.mvarId!.assign val
 
 -- tactic with capturing the goal
@@ -49,7 +49,7 @@ example (a b : Nat) (h : False) : a = b := by
   run_tacq goal =>
     Lean.logInfo m!"{goal.isMVar}"
     Lean.logInfo goal.ty
-    assignQ goal q(False.elim $h)
+    assignQ q($goal) q(False.elim $h)
 
 -- universes & let expressions
 
@@ -71,4 +71,4 @@ example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
     Lean.logInfo u
     Lean.logInfo α
     Lean.logInfo f₂.ty
-    assignQ goal q(Eq.symm $h)
+    assignQ q($goal) q(Eq.symm $h)
