@@ -22,12 +22,6 @@ def x := q(5)
 
 -- tactic without capturing the goal
 /--
-info: a = b
----
-info: true
----
-info: true
----
 trace: a b : Q(Nat)
 _h : Q(«$a» = «$b»)
 ⊢ Q(Prop)
@@ -39,9 +33,6 @@ example (a b : Nat) (_h : a = b) : True := by
       trace_state
       exact q($a = $b)
     let t ← Lean.Meta.inferType _h
-    Lean.logInfo p
-    Lean.logInfo <| toString (← Lean.Meta.isDefEq t p)
-    Lean.logInfo <| toString (← Lean.Meta.isDefEq _h.ty p)
   trivial
 
 def assignQ {α : Q(Type)} (mvar : Q($α)) (val : Q($α)) : Lean.Meta.MetaM Unit :=
