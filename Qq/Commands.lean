@@ -37,8 +37,9 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
     let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames
     let quotedGoal : Q(Type) ←
       if expectedType.isMVar then pure q(TermElabM Expr)
-      else pure <| mkApp (mkConst ``TermElabM) (mkApp (mkConst ``Quoted)
-        (← Qq.Impl.quoteExpr expectedType))
+      else
+        let expectedTypeQ : Q(Expr) ← Qq.Impl.quoteExpr expectedType
+        pure <| q(TermElabM (Quoted $expectedTypeQ))
     return (quotedCtx, assignments, quotedGoal)
   let codeExpr : Expr ← withLCtx quotedCtx #[] do
     let body ← Term.elabTermAndSynthesize (← `(do $e)) quotedGoal
