@@ -419,7 +419,7 @@ Translates an arbitrary local context to a context of
 Q-annotated expressions. Used by `by_elabq` and `run_tacq`.
 -/
 def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
-    Qq.Impl.UnquoteM (LocalContext × Array Expr) := do
+    UnquoteM (LocalContext × Array Expr) := do
   let mut quotedCtx := LocalContext.empty
   let mut assignments : Array Expr := #[]
   for nm in levelNames do
