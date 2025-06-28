@@ -50,48 +50,54 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
 /--
 `run_tacq` is a Qq-analogue to `run_tac`
 Executes an arbitrary `TacticM` code. Moreover, the local
-context can be directly accessed as quoted expressions,
-and the Q-annotated goal is available as `goalq`.
+context can be directly accessed as quoted expressions.
+Optionally, user can also save the annotated goal using
+syntax `run_tacq $g =>`
 Example:
 ```
 example (a b : Nat) (h : a = b) : True := by
-  run_tacq
+  run_tacq goal =>
     let p : Q(Prop) := q($a = $b)
     let t ← Lean.Meta.inferType h
     Lean.logInfo p
     Lean.logInfo <| toString (← Lean.Meta.isDefEq t p)
     Lean.logInfo <| toString (← Lean.Meta.isDefEq h.ty p)
-    Lean.logInfo goalq
-    Lean.logInfo goalq.ty
+    Lean.logInfo goal
+    Lean.logInfo goal.ty
   trivial
 ```
 See also: `by_elabq`.
 -/
 scoped
-elab "run_tacq" e:doSeq : tactic => do
+syntax "run_tacq" (ident "=>")? doSeq : tactic
+
+elab_rules : tactic
+| `(tactic| run_tacq $[$gi:ident =>]? $seq:doSeq) => do
   let goal ← try
     getMainGoal
   catch _ =>
     throwError "no open goal, run_tacq requires main goal"
   withMainContext do
-    let goalName := `goalq
     let lctx ← getLCtx
     let levelNames ← Term.getLevelNames
     let target ← getMainTarget
     let (quotedCtx, assignments) ← liftMetaM <| StateT.run'
           (s := {mayPostpone := False}) do
       let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames
-      let quotedTarget ← Qq.Impl.quoteExpr target
-      let goalFid ← mkFreshFVarId
-      let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName
-        (mkApp (mkConst ``Quoted) quotedTarget) .default
-      let assignments := assignments.push (toExpr (Expr.mvar goal))
-      return (quotedCtx, assignments)
+      match gi with
+      | none => return (quotedCtx, assignments)
+      | some stx =>
+        let goalName := stx.1.getId
+        let quotedTarget ← Qq.Impl.quoteExpr target
+        let goalFid ← mkFreshFVarId
+        let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName
+          (mkApp (mkConst ``Quoted) quotedTarget) .default
+        let assignments := assignments.push (toExpr (Expr.mvar goal))
+        return (quotedCtx, assignments)
     let codeExpr : Expr ← withLCtx quotedCtx #[] do
-      let body ← Term.elabTermAndSynthesize (← `(discard do $e)) q(TacticM Unit)
+      let body ← Term.elabTermAndSynthesize (← `(discard do $seq)) q(TacticM Unit)
       mkHaveFVars assignments body
-    let typeExpr := q(TacticM Unit)
-    let code ← unsafe evalExpr (TacticM Unit) typeExpr codeExpr
+    let code ← unsafe evalExpr (TacticM Unit) q(TacticM Unit) codeExpr
     code
 
 end Qq
