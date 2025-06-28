@@ -70,10 +70,8 @@ example (a b : Nat) (h : a = b) : True := by
 ```
 See also: `by_elabq`.
 -/
-scoped
-syntax "run_tacq" ident "=>" doSeq : tactic
-scoped
-syntax "run_tacq" doSeq : tactic
+scoped syntax "run_tacq" ident "=>" doSeq : tactic
+scoped syntax "run_tacq" doSeq : tactic
 
 def runTacq (gi : Option Name) (seq : TSyntax `Lean.Parser.Term.doSeq) : TacticM Unit := do
   let goal ← try
