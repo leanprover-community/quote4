@@ -5,13 +5,15 @@ namespace Qq
 open Lean Meta Elab Tactic
 
 private
-def mkHaveFVars (assignments : Array Expr) (body : Expr) : MetaM Expr := do
+def mkLetFVarsFromValues (values : Array Expr) (body : Expr) : MetaM Expr := do
   let ctx ← getLCtx
-  let (_, res) ← ctx.foldrM (init := (assignments, body)) fun decl (assignments, body) => do
-    let value := assignments.back!
-    let result := .letE decl.userName decl.type value (body.abstract #[.fvar decl.fvarId]) false
-    return (assignments.pop, result)
-  return res
+  let ctxLet := ctx.foldl (init := LocalContext.empty) (fun part decl =>
+    part.addDecl (.ldecl decl.index decl.fvarId decl.userName
+      decl.type values[decl.index]! false decl.kind))
+  let fvars : Array Expr := ctx.foldl (init := #[]) (fun part decl =>
+    part.push (.fvar decl.fvarId))
+  withLCtx ctxLet #[] do
+    mkLetFVars fvars body
 
 /--
 `by_elabq` is the Qq analogue to `by_elab`
@@ -43,7 +45,7 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
     return (quotedCtx, assignments, quotedGoal)
   let codeExpr : Expr ← withLCtx quotedCtx #[] do
     let body ← Term.elabTermAndSynthesize (← `(do $e)) quotedGoal
-    mkHaveFVars assignments body
+    mkLetFVarsFromValues assignments body
   let code ← unsafe evalExpr (TermElabM Expr) q(TermElabM Expr) codeExpr
   code
 
@@ -96,7 +98,7 @@ elab_rules : tactic
         return (quotedCtx, assignments)
     let codeExpr : Expr ← withLCtx quotedCtx #[] do
       let body ← Term.elabTermAndSynthesize (← `(discard do $seq)) q(TacticM Unit)
-      mkHaveFVars assignments body
+      mkLetFVarsFromValues assignments body
     let code ← unsafe evalExpr (TacticM Unit) q(TacticM Unit) codeExpr
     code
 
