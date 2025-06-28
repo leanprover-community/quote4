@@ -15,7 +15,7 @@ def f (x : Prop) [Decidable x] : Int :=
     Lean.logInfo x.ty
     return q(if $x then 2 else 3)
 
- #print f
+#print f
 
 -- without goal type
 def x := q(5)
@@ -27,11 +27,17 @@ info: a = b
 info: true
 ---
 info: true
+---
+trace: a b : Q(Nat)
+_h : Q(«$a» = «$b»)
+⊢ Q(Prop)
 -/
 #guard_msgs in
 example (a b : Nat) (_h : a = b) : True := by
   run_tacq
-    let p : Q(Prop) := q($a = $b)
+    let p : Q(Prop) := by
+      trace_state
+      exact q($a = $b)
     let t ← Lean.Meta.inferType _h
     Lean.logInfo p
     Lean.logInfo <| toString (← Lean.Meta.isDefEq t p)
