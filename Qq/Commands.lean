@@ -83,7 +83,7 @@ def runTacq (gi : Option Name) (seq : TSyntax `Lean.Parser.Term.doSeq) : TacticM
     getMainGoal
   catch _ =>
     throwError "no open goal, run_tacq requires main goal"
-  withMainContext do
+  goal.withContext do
     let lctx ← getLCtx
     let levelNames ← Term.getLevelNames
     let target ← getMainTarget
