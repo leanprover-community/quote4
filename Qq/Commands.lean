@@ -44,8 +44,7 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
   let codeExpr : Expr ← withLCtx quotedCtx #[] do
     let body ← Term.elabTermAndSynthesize (← `(do $e)) quotedGoal
     mkHaveFVars assignments body
-  let typeExpr := q(TermElabM Expr)
-  let code ← unsafe evalExpr (TermElabM Expr) typeExpr codeExpr
+  let code ← unsafe evalExpr (TermElabM Expr) q(TermElabM Expr) codeExpr
   code
 
 /--
