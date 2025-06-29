@@ -424,8 +424,7 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
   let mut assignments : Array Expr := #[]
   for nm in levelNames do
     let fid ← mkFreshFVarId
-    quotedCtx := quotedCtx.mkLocalDecl
-      fid nm (mkConst ``Level) .default .default
+    quotedCtx := quotedCtx.mkLocalDecl fid nm (mkConst ``Level) .default .default
     modify fun s => { s with levelBackSubst := s.levelBackSubst.insert (.param nm) (.fvar fid) }
     assignments := assignments.push (toExpr (Level.param nm))
   for decl in ctx do
@@ -439,8 +438,8 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
     if decl.isLet then
       let eqFid ← mkFreshFVarId
       let level ← getLevel type
-      let quotedLevel ← (quoteLevel (← instantiateLevelMVars level))
-      let quotedValue ← (quoteExpr (← instantiateMVars decl.value))
+      let quotedLevel ← quoteLevel (← instantiateLevelMVars level)
+      let quotedValue ← quoteExpr (← instantiateMVars decl.value)
       quotedCtx := quotedCtx.mkLocalDecl eqFid (← mkFreshUserName (decl.userName ++ `eq))
         (mkApp4 (mkConst ``QuotedDefEq) quotedLevel quotedType (.fvar fid) quotedValue)
       assignments := assignments.push
