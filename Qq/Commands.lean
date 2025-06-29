@@ -105,7 +105,10 @@ elab_rules : tactic
     let codeExpr : Expr ← withLCtx quotedCtx #[] do
       if let .some (goalName, goalFid) := goalInfo? then
         discard <| Term.addTermInfo' (isBinder := true) goalName (Expr.fvar goalFid)
-      let body ← Term.elabTermAndSynthesize (← `(discard do $seq)) q(TacticM Unit)
+      let body ← Term.elabTermEnsuringType (← `(discard do $seq)) q(TacticM Unit)
+      Term.synthesizeSyntheticMVarsNoPostponing
+      let body ← instantiateMVars body
+      if (← Term.logUnassignedUsingErrorInfos (← getMVars body)) then throwAbortTerm
       mkLetFVarsFromValues assignments body
     let code ← unsafe evalExpr (TacticM Unit) q(TacticM Unit) codeExpr
     code
