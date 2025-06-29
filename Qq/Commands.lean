@@ -51,7 +51,10 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
         pure <| q(TermElabM (Quoted $expectedTypeQ))
     return (quotedCtx, assignments, quotedGoal)
   let codeExpr : Expr ← withLCtx quotedCtx #[] do
-    let body ← Term.elabTermAndSynthesize (← `(do $e)) quotedGoal
+    let body ← Term.elabTermEnsuringType (← `(do $e)) quotedGoal
+    Term.synthesizeSyntheticMVarsNoPostponing
+    let body ← instantiateMVars body
+    if (← Term.logUnassignedUsingErrorInfos (← getMVars body)) then throwAbortTerm
     mkLetFVarsFromValues assignments body
   let code ← unsafe evalExpr (TermElabM Expr) q(TermElabM Expr) codeExpr
   code
