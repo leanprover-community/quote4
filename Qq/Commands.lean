@@ -40,7 +40,7 @@ See also: `run_tacq`.
 scoped
 elab "by_elabq" e:doSeq : term <= expectedType => do
   let lctx ← getLCtx
-  let levelNames ← Term.getLevelNames
+  let levelNames := (← Term.getLevelNames).reverse -- these are backwards!
   let (quotedCtx, assignments, quotedGoal) ← liftMetaM <| StateT.run'
         (s := { mayPostpone := false }) do
     let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames

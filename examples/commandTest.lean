@@ -70,7 +70,7 @@ example (a b : Nat) (h : False) : a = b := by
 
 -- universes & let expressions
 
-universe u v
+universe u v in
 /--
 trace: u v : Level
 α : Q(Type u)
@@ -93,3 +93,24 @@ example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
   run_tacq goal =>
     trace_state
     assignQ q($goal) q(Eq.symm $h)
+
+universe u v in
+/--
+trace: u v : Level
+α : Q(Type u)
+β : Q(Type v)
+f₀ : Q(«$α» → «$β»)
+f₁ : Q(«$β» → «$α»)
+b : Q(«$β»)
+h : Q(«$f₀» («$f₁» «$b») = «$b»)
+f₂ : Q(«$β» → «$β»)
+f₂.eq✝ : «$f₂» =Q «$f₀» ∘ «$f₁»
+⊢ TermElabM Q(«$b» = «$f₀» («$f₁» «$b»))
+-/
+#guard_msgs in
+example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
+    (b : β) (h : f₀ (f₁ b) = b) :
+    b = f₀ (f₁ b) :=
+  let f₂ := f₀ ∘ f₁
+  by_elabq
+    trace_return q(Eq.symm $h)
