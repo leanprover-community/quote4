@@ -80,7 +80,7 @@ elab_rules : tactic
     throwError "no open goal, run_tacq requires main goal"
   goal.withContext do
     let lctx ← getLCtx
-    let levelNames ← Term.getLevelNames
+    let levelNames := (← Term.getLevelNames).reverse -- these are backwards!
     let target ← instantiateMVars (← goal.getType)
     let (quotedCtx, assignments, goalInfo?) ← liftMetaM <| StateT.run'
           (s := { mayPostpone := false }) do

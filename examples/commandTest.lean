@@ -69,7 +69,7 @@ example (a b : Nat) (h : False) : a = b := by
 
 universe u v
 /--
-trace: v u : Level
+trace: u v : Level
 α : Q(Type u)
 β : Q(Type v)
 f₀ : Q(«$α» → «$β»)
