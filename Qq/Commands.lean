@@ -96,10 +96,10 @@ elab_rules : tactic
       match gi with
       | none => return (quotedCtx, assignments, none)
       | some goalName =>
-        let quotedTarget: Expr ← Qq.Impl.quoteExpr target
+        let quotedTarget : Q(Expr) ← Qq.Impl.quoteExpr target
         let goalFid ← mkFreshFVarId
         let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName.getId
-          (mkApp q(Quoted) quotedTarget) .default
+          q(Quoted $quotedTarget) .default
         let assignments := assignments.push (toExpr (Expr.mvar goal))
         return (quotedCtx, assignments, some (goalName, goalFid))
     let codeExpr : Expr ← withLCtx quotedCtx #[] do
