@@ -55,11 +55,17 @@ example (a b : Nat) (h : False) : a = b := by
 
 universe u v
 /--
-info: u
----
-info: α
----
-info: β → β
+trace: v u : Lean.Level
+α : Q(Type u)
+β : Q(Type v)
+f₀ : Q(«$α» → «$β»)
+f₁ : Q(«$β» → «$α»)
+b : Q(«$β»)
+h : Q(«$f₀» («$f₁» «$b») = «$b»)
+f₂ : Q(«$β» → «$β»)
+eq✝ : «$f₂» =Q «$f₀» ∘ «$f₁»
+goal : Q(«$b» = «$f₂» «$b»)
+⊢ True
 -/
 #guard_msgs in
 example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
@@ -68,7 +74,5 @@ example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
     b = f₂ b := by
   intro f₂
   run_tacq goal =>
-    Lean.logInfo u
-    Lean.logInfo α
-    Lean.logInfo f₂.ty
+    have : True := by trace_state; trivial
     assignQ q($goal) q(Eq.symm $h)
