@@ -9,6 +9,11 @@ This file provides Qq analogues to `by_elab` and `run_tac`.
 namespace Qq
 open Lean Meta Elab Tactic
 
+/--
+Build a let expression, similarly to `mkLetFVars`.
+The array of `values` will be assigned to the current local context,
+which is expected to consist of `cdecl`s.
+-/
 private def mkLetFVarsFromValues (values : Array Expr) (body : Expr) : MetaM Expr := do
   let ctx ← getLCtx
   let ctxLet := ctx.foldl (init := LocalContext.empty) fun part decl =>
