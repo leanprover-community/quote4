@@ -17,6 +17,9 @@ def f₁ (x : Prop) [Decidable x] : Int :=
   by_elabq
     trace_return q(if $x then 2 else 3)
 
+def add_self_37 {α : Type u} [Add α] (a : α) : α :=
+  by_elabq return (List.range 36).foldr (init := q($a)) fun _ acc => q($acc + $a)
+
 /-- info: f₁ (x : Prop) [Decidable x] : Int -/
 #guard_msgs in
 #check f₁

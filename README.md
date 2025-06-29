@@ -26,6 +26,10 @@ def c (n : Q(Nat)) := q([42 + $n])
 -- Dependently-typed antiquotations
 def d (u : Level) (n : Q(Nat)) (x : Q(Type u × Fin ($n + 1))) : Q(Fin ($n + 3)) :=
   q(⟨$x.2, Nat.lt_of_lt_of_le $x.2.2 (Nat.le_add_right _ 2)⟩)
+
+-- Use `q()` to generate a large term in a regular definition
+def add_self_37 {α : Type u} [Add α] (a : α) : α :=
+  by_elabq return (List.range 36).foldr (init := q($a)) fun _ acc => q($acc + $a)
 ```
 
 ## Typing rules
