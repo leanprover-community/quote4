@@ -44,6 +44,7 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
   let (quotedCtx, assignments, quotedGoal) ← liftMetaM <| StateT.run'
         (s := { mayPostpone := false }) do
     let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames
+    let expectedType ← instantiateMVars expectedType
     let quotedGoal : Q(Type) ←
       if expectedType.hasMVar then pure q(TermElabM Expr)
       else
