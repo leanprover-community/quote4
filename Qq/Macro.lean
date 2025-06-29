@@ -441,7 +441,7 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
       let level ← getLevel type
       let quotedLevel ← (quoteLevel (← instantiateLevelMVars level))
       let quotedValue ← (quoteExpr (← instantiateMVars decl.value))
-      quotedCtx := quotedCtx.mkLocalDecl eqFid (← mkFreshUserName `eq)
+      quotedCtx := quotedCtx.mkLocalDecl eqFid (← mkFreshUserName (decl.userName ++ `eq))
         (mkApp4 (mkConst ``QuotedDefEq) quotedLevel quotedType (.fvar fid) quotedValue)
       assignments := assignments.push
         (mkApp4 (mkConst ``QuotedDefEq.unsafeIntro) quotedLevel quotedType (.fvar fid) quotedValue)

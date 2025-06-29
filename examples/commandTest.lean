@@ -2,20 +2,19 @@ import Qq
 
 open Qq
 
+macro "trace_state" : doElem => `(doElem| pure (by trace_state; exact ()))
+
 -- using the goal type (interpret 2, 3 as Int)
 /--
-info: x
----
-info: Prop
+trace: x : Q(Prop)
+inst✝ : Q(Decidable «$x»)
+⊢ PUnit
 -/
 #guard_msgs in
 def f (x : Prop) [Decidable x] : Int :=
   by_elabq
-    Lean.logInfo x
-    Lean.logInfo x.ty
+    trace_state
     return q(if $x then 2 else 3)
-
-#print f
 
 -- without goal type
 def x := q(5)
@@ -24,14 +23,13 @@ def x := q(5)
 /--
 trace: a b : Q(Nat)
 _h : Q(«$a» = «$b»)
-⊢ Q(Prop)
+⊢ PUnit
 -/
 #guard_msgs in
 example (a b : Nat) (_h : a = b) : True := by
   run_tacq
-    let p : Q(Prop) := by
-      trace_state
-      exact q($a = $b)
+    trace_state
+    let p : Q(Prop) := q($a = $b)
     let t ← Lean.Meta.inferType _h
   trivial
 
@@ -63,9 +61,9 @@ f₁ : Q(«$β» → «$α»)
 b : Q(«$β»)
 h : Q(«$f₀» («$f₁» «$b») = «$b»)
 f₂ : Q(«$β» → «$β»)
-eq✝ : «$f₂» =Q «$f₀» ∘ «$f₁»
+f₂.eq✝ : «$f₂» =Q «$f₀» ∘ «$f₁»
 goal : Q(«$b» = «$f₂» «$b»)
-⊢ True
+⊢ PUnit
 -/
 #guard_msgs in
 example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
@@ -74,5 +72,5 @@ example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
     b = f₂ b := by
   intro f₂
   run_tacq goal =>
-    have : True := by trace_state; trivial
+    trace_state
     assignQ q($goal) q(Eq.symm $h)
