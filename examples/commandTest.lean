@@ -1,39 +1,54 @@
 import Qq
 
-open Qq
+open Qq Lean Elab Tactic
 
-macro "trace_state" : doElem => `(doElem| pure (by trace_state; exact ()))
+macro "trace_state" : doElem => `(doElem| (by trace_state; exact pure ()))
+macro "trace_return" t:term : doElem => `(doElem| (by trace_state; exact pure $t))
 
 -- using the goal type (interpret 2, 3 as Int)
 /--
 trace: x : Q(Prop)
 inst✝ : Q(Decidable «$x»)
-⊢ PUnit
+⊢ TermElabM Q(Int)
 -/
 #guard_msgs in
-def f (x : Prop) [Decidable x] : Int :=
+def f₁ (x : Prop) [Decidable x] : Int :=
   by_elabq
-    trace_state
-    return q(if $x then 2 else 3)
+    trace_return q(if $x then 2 else 3)
+
+/-- info: f₁ (x : Prop) [Decidable x] : Int -/
+#guard_msgs in
+#check f₁
 
 -- without goal type
-def x := q(5)
+/--
+trace: _x : Q(Int)
+⊢ TermElabM Expr
+-/
+#guard_msgs in
+def f₂ (_x : Int) := by_elabq
+  trace_return q(5)
+
+/-- info: f₂ (_x : Int) : Nat -/
+#guard_msgs in
+#check f₂
 
 -- tactic without capturing the goal
 /--
 trace: a b : Q(Nat)
 _h : Q(«$a» = «$b»)
-⊢ PUnit
+p : Q(Prop) := q(«$a» = «$b»)
+⊢ TacticM PUnit
 -/
 #guard_msgs in
 example (a b : Nat) (_h : a = b) : True := by
   run_tacq
-    trace_state
     let p : Q(Prop) := q($a = $b)
-    let t ← Lean.Meta.inferType _h
+    trace_state
+    let t ← Meta.inferType _h
   trivial
 
-def assignQ {α : Q(Sort u)} (mvar : Q($α)) (val : Q($α)) : Lean.Meta.MetaM Unit :=
+def assignQ {α : Q(Sort u)} (mvar : Q($α)) (val : Q($α)) : Meta.MetaM Unit :=
   mvar.mvarId!.assign val
 
 -- tactic with capturing the goal
@@ -45,15 +60,15 @@ info: a = b
 #guard_msgs in
 example (a b : Nat) (h : False) : a = b := by
   run_tacq goal =>
-    Lean.logInfo m!"{goal.isMVar}"
-    Lean.logInfo goal.ty
+    logInfo m!"{goal.isMVar}"
+    logInfo goal.ty
     assignQ q($goal) q(False.elim $h)
 
 -- universes & let expressions
 
 universe u v
 /--
-trace: v u : Lean.Level
+trace: v u : Level
 α : Q(Type u)
 β : Q(Type v)
 f₀ : Q(«$α» → «$β»)
@@ -63,7 +78,7 @@ h : Q(«$f₀» («$f₁» «$b») = «$b»)
 f₂ : Q(«$β» → «$β»)
 f₂.eq✝ : «$f₂» =Q «$f₀» ∘ «$f₁»
 goal : Q(«$b» = «$f₂» «$b»)
-⊢ PUnit
+⊢ TacticM PUnit
 -/
 #guard_msgs in
 example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)

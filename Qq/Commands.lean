@@ -42,7 +42,7 @@ elab "by_elabq" e:doSeq : term <= expectedType => do
         (s := {mayPostpone := False}) do
     let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames
     let quotedGoal : Q(Type) ←
-      if expectedType.isMVar then pure q(TermElabM Expr)
+      if expectedType.hasMVar then pure q(TermElabM Expr)
       else
         let expectedTypeQ : Q(Expr) ← Qq.Impl.quoteExpr expectedType
         pure <| q(TermElabM (Quoted $expectedTypeQ))
