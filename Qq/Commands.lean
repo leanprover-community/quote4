@@ -9,16 +9,14 @@ This file provides Qq analogues to `by_elab` and `run_tac`.
 namespace Qq
 open Lean Meta Elab Tactic
 
-private
-def mkLetFVarsFromValues (values : Array Expr) (body : Expr) : MetaM Expr := do
+private def mkLetFVarsFromValues (values : Array Expr) (body : Expr) : MetaM Expr := do
   let ctx ← getLCtx
-  let ctxLet := ctx.foldl (init := LocalContext.empty) (fun part decl =>
+  let ctxLet := ctx.foldl (init := LocalContext.empty) fun part decl =>
     part.addDecl (.ldecl decl.index decl.fvarId decl.userName
-      decl.type values[decl.index]! false decl.kind))
-  let fvars : Array Expr := ctx.foldl (init := #[]) (fun part decl =>
-    part.push (.fvar decl.fvarId))
-  withLCtx ctxLet #[] do
-    mkLetFVars fvars body
+      decl.type values[decl.index]! false decl.kind)
+  let fvars : Array Expr := ctx.foldl (init := #[]) fun part decl =>
+    part.push (.fvar decl.fvarId)
+  withLCtx ctxLet #[] <| mkLetFVars fvars body
 
 /--
 `by_elabq` is the Qq analogue to `by_elab` which allows executing arbitrary `TermElabM` code in
@@ -90,19 +88,15 @@ elab_rules : tactic
       match gi with
       | none => return (quotedCtx, assignments, none)
       | some goalName =>
-        let quotedTarget ← Qq.Impl.quoteExpr target
+        let quotedTarget: Expr ← Qq.Impl.quoteExpr target
         let goalFid ← mkFreshFVarId
         let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName.getId
-          (mkApp (mkConst ``Quoted) quotedTarget) .default
+          (mkApp q(Quoted) quotedTarget) .default
         let assignments := assignments.push (toExpr (Expr.mvar goal))
-        return (quotedCtx, assignments,
-          some (goalName, goalFid))
+        return (quotedCtx, assignments, some (goalName, goalFid))
     let codeExpr : Expr ← withLCtx quotedCtx #[] do
-      match goalInfo? with
-      | some (goalName, goalFid) =>
-        discard <|
-          Term.addTermInfo' (isBinder := true) goalName (Expr.fvar goalFid)
-      | none => pure ()
+      if let .some (goalName, goalFid) := goalInfo? then
+        discard <| Term.addTermInfo' (isBinder := true) goalName (Expr.fvar goalFid)
       let body ← Term.elabTermAndSynthesize (← `(discard do $seq)) q(TacticM Unit)
       mkLetFVarsFromValues assignments body
     let code ← unsafe evalExpr (TacticM Unit) q(TacticM Unit) codeExpr
