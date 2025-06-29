@@ -1,4 +1,5 @@
-import Qq
+import Qq.Commands
+import Qq.Delab
 
 open Qq Lean Elab Tactic
 
