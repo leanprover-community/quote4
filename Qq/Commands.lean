@@ -84,19 +84,25 @@ elab_rules : tactic
     let lctx ← getLCtx
     let levelNames ← Term.getLevelNames
     let target ← instantiateMVars (← goal.getType)
-    let (quotedCtx, assignments) ← liftMetaM <| StateT.run'
+    let (quotedCtx, assignments, goalInfo?) ← liftMetaM <| StateT.run'
           (s := { mayPostpone := false }) do
       let (quotedCtx, assignments) ← Impl.quoteLCtx lctx levelNames
       match gi with
-      | none => return (quotedCtx, assignments)
+      | none => return (quotedCtx, assignments, none)
       | some goalName =>
         let quotedTarget ← Qq.Impl.quoteExpr target
         let goalFid ← mkFreshFVarId
         let quotedCtx := quotedCtx.mkLocalDecl goalFid goalName.getId
           (mkApp (mkConst ``Quoted) quotedTarget) .default
         let assignments := assignments.push (toExpr (Expr.mvar goal))
-        return (quotedCtx, assignments)
+        return (quotedCtx, assignments,
+          some (goalName, goalFid))
     let codeExpr : Expr ← withLCtx quotedCtx #[] do
+      match goalInfo? with
+      | some (goalName, goalFid) =>
+        discard <|
+          Term.addTermInfo' (isBinder := true) goalName (Expr.fvar goalFid)
+      | none => pure ()
       let body ← Term.elabTermAndSynthesize (← `(discard do $seq)) q(TacticM Unit)
       mkLetFVarsFromValues assignments body
     let code ← unsafe evalExpr (TacticM Unit) q(TacticM Unit) codeExpr
