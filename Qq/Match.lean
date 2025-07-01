@@ -268,7 +268,7 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let argLvlExpr ← mkFreshExprMVarQ q(Level)
   let argTyExpr ← mkFreshExprMVarQ q(Quoted (.sort $argLvlExpr))
   let e' ← elabTermEnsuringTypeQ e q(Quoted $argTyExpr)
-  let argTyExpr ← instantiateMVarsQ argTyExpr
+  let ⟨argTyExpr, _⟩ ← instantiateMVarsQ argTyExpr
 
   let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run { mayPostpone := (← read).mayPostpone }
   let (pat, patVarDecls, newLevels) ← elabPat pat lctx localInsts type s.levelNames
