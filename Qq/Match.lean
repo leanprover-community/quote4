@@ -306,18 +306,7 @@ partial def isIrrefutablePattern : Term → Bool
   | `(true) => false | `(false) => false -- TODO properly
   | stx => stx.1.isIdent
 
-scoped elab "_comefrom" n:ident "do" b:doSeq " in " body:term : term <= expectedType => do
-  let _ ← extractBind expectedType
-  let ty ← exprToSyntax expectedType
-  elabTerm (← `(have $n:ident : $ty := (do $b:doSeq); $body)) expectedType
-
-scoped syntax "_comefrom" ident "do" doSeq : term
-macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b in $body)
-
-scoped macro "comefrom" n:ident "do" b:doSeq : doElem =>
-  `(doElem| assert! (_comefrom $n do $b))
-
-def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat : Term) (rhs : TSyntax `term) (alt : TSyntax ``doSeq) : m (List (TSyntax ``doSeqItem)) := do
+def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat : Term) (rhs : Term) (alt : TSyntax ``doSeq) : m (List (TSyntax ``doSeqItem)) := do
   match pat with
     | `(_) => return []
     | _ =>
@@ -441,11 +430,8 @@ macro_rules
         `(doElem| do $(lifts.push t):doSeqItem*)
 
       | _ =>
-        let (pat', auxs) ← floatQMatch (← `(doSeq| alt)) pat []
-        let items :=
-          #[← `(doSeqItem| comefrom alt do $alt:doSeq)] ++
-          (← mkLetDoSeqItem pat' rhs alt) ++
-          auxs
+        let (pat', auxs) ← floatQMatch (← `(doSeq| $alt)) pat []
+        let items := Array.mk <| (← mkLetDoSeqItem pat' rhs alt) ++ auxs
         `(doElem| do $items:doSeqItem*)
 
   | `(match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
@@ -462,14 +448,15 @@ macro_rules
       | _ => Macro.throwErrorAt stx "not supported in ~q matching"
 
     let mut items := #[]
-    items := items.push (← `(doSeqItem| comefrom alt do throwError "nonexhaustive match"))
+    let mut alt : TSyntax `doElem ← `(doElem| throwError "nonexhaustive match")
     for pats in patss.reverse, rhs in rhss.reverse do
       let mut subItems : Array (TSyntax ``doSeqItem) := #[]
       for discr in discrs, pat in pats do
-        subItems := subItems ++ (← mkLetDoSeqItem pat discr (← `(doSeq| alt)))
+        subItems :=
+          subItems ++ (← mkLetDoSeqItem pat discr (← `(doSeq|$alt:doElem)))
       subItems := subItems.push (← `(doSeqItem| do $rhs))
-      items := items.push (← `(doSeqItem| comefrom alt do $subItems:doSeqItem*))
-    items := items.push (← `(doSeqItem| alt))
-    `(doElem| (do $items:doSeqItem*))
+      alt ← `(doElem| do $subItems:doSeqItem*)
+    items := items.push (← `(doSeqItem|$alt:doElem))
+    `(doElem| do $items:doSeqItem*)
 
 end
