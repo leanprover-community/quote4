@@ -434,6 +434,8 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
     let quotedType ← quoteExpr type
     quotedCtx := quotedCtx.mkLocalDecl fid decl.userName
       (mkApp (mkConst ``Quoted) quotedType) decl.binderInfo
+    Elab.pushInfoLeaf <|
+      .ofFVarAliasInfo { id := fid, baseId := decl.fvarId, userName := decl.userName }
     assignments := assignments.push (toExpr (Expr.fvar decl.fvarId))
     if decl.isLet then
       let eqFid ← mkFreshFVarId
