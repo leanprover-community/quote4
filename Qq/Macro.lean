@@ -64,7 +64,7 @@ def determineLocalInstances (lctx : LocalContext) : MetaM LocalInstances := do
   let mut localInsts : LocalInstances := {}
   for ldecl in lctx do
     match (← isClass? ldecl.type) with
-      | some c => localInsts := localInsts.push { className := c, fvar := ldecl.toExpr }
+      | some c => localInsts ← localInsts.addInstance c ldecl.toExpr ldecl.fvarId
       | none => pure ()
   pure localInsts
 

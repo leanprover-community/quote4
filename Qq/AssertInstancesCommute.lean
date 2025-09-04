@@ -10,17 +10,18 @@ open Lean Meta Elab Term
 def isRedundantLocalInst? (inst : FVarId) : MetaM (Option Expr) := do
   let ldecl ← inst.getDecl
   if ldecl.hasValue then return none
-  let rest := (← getLocalInstances).filter (·.fvar != .fvar inst)
+  let rest := (← getLocalInstances).filter (·.fvarId != inst)
   withLCtx (← getLCtx) rest do
   let some inst ← synthInstance? ldecl.type | return none
   return if (← makeDefEq ldecl.toExpr inst).isSome then inst else none
 
 def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
-  for {fvar, ..} in ← withUnquotedLCtx getLocalInstances do
-    if let some (.quoted (.fvar quotedFVar)) := (← read).exprBackSubst[fvar]? then
-      if (← quotedFVar.getDecl).hasValue then continue
-      if let some result ← withUnquotedLCtx do isRedundantLocalInst? fvar.fvarId! then
-        return (fvar.fvarId!, result)
+  for {val, ..} in ← withUnquotedLCtx getLocalInstances do
+    if val.isFVar then
+      if let some (.quoted (.fvar quotedFVar)) := (← read).exprBackSubst[val]? then
+        if (← quotedFVar.getDecl).hasValue then continue
+        if let some result ← withUnquotedLCtx do isRedundantLocalInst? val.fvarId! then
+          return (val.fvarId!, result)
   return none
 
 def findRedundantLocalInstQuoted? :
