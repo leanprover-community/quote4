@@ -67,6 +67,17 @@ open Parser.Term
 
 namespace Qq
 
+declare_syntax_cat q_matcher
+
+scoped syntax (name := matcher) "~q(" term ")" : q_matcher
+
+/-- Like `~q()` but for levels. -/
+scoped syntax (name := levelMatcher) "~ql(" level ")" : q_matcher
+
+syntax q_matcher : term
+
+abbrev QPattern := TSyntax `q_matcher
+
 namespace Impl
 
 structure PatVarDecl where
@@ -200,6 +211,10 @@ structure PatternVar where
   mvar : Expr
   stx : Term
 
+def isPatVar (fn : Syntax) : Bool :=
+  fn.isAntiquot && !fn.isEscapedAntiquot && fn.getAntiquotTerm.isIdent &&
+  fn.getAntiquotTerm.getId.isAtomic
+
 partial def getPatVars (pat : Term) : StateT (Array PatternVar) TermElabM Term := do
   match pat with
     | `($fn $args*) => if isPatVar fn then return ← mkMVar fn args
@@ -207,13 +222,7 @@ partial def getPatVars (pat : Term) : StateT (Array PatternVar) TermElabM Term :
   match pat with
     | ⟨.node info kind args⟩ => return ⟨.node info kind (← args.mapM (getPatVars ⟨·⟩))⟩
     | pat => return pat
-
   where
-
-    isPatVar (fn : Syntax) : Bool :=
-      fn.isAntiquot && !fn.isEscapedAntiquot && fn.getAntiquotTerm.isIdent &&
-      fn.getAntiquotTerm.getId.isAtomic
-
     mkMVar (fn : Syntax) (args : Array Term) : StateT _ TermElabM Term := do
       let args ← args.mapM getPatVars
       let id := fn.getAntiquotTerm.getId
@@ -223,6 +232,7 @@ partial def getPatVars (pat : Term) : StateT (Array PatternVar) TermElabM Term :
         let mvar ← elabTerm (← `(?m)).1.stripPos (← mkNAryFunctionType args.size)
         modify (·.push ⟨id, args.size, mvar, ← `(?m)⟩)
         `(?m $args*)
+
 def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty : Expr)
     (levelNames : List Name) : TermElabM (Expr × Array LocalDecl × Array Name) :=
   withLCtx lctx localInsts do
@@ -261,40 +271,45 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
               ← sortLocalDecls (← newDecls.mapM fun d => instantiateLocalDeclMVars d),
               r.newParamNames)
 
-scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term : term <= expectedType => do
+scoped elab "_qq_match" pat:q_matcher " ← " e:term " | " alt:term " in " body:term : term <= expectedType => do
   let emr ← extractBind expectedType
   let alt ← elabTermEnsuringType alt expectedType
+  match pat with
+  | `(q_matcher| ~ql($lpat)) =>
+    let _e' ← elabTermEnsuringTypeQ lpat q(Level)
+    throwErrorAt pat "~ql() is not yet implemented"
+  | `(q_matcher| ~q($pat)) =>
+    let argLvlExpr ← mkFreshExprMVarQ q(Level)
+    let argTyExpr ← mkFreshExprMVarQ q(Quoted (.sort $argLvlExpr))
+    let e' ← elabTermEnsuringTypeQ e q(Quoted $argTyExpr)
+    let argTyExpr ← instantiateMVarsQ argTyExpr
 
-  let argLvlExpr ← mkFreshExprMVarQ q(Level)
-  let argTyExpr ← mkFreshExprMVarQ q(Quoted (.sort $argLvlExpr))
-  let e' ← elabTermEnsuringTypeQ e q(Quoted $argTyExpr)
-  let argTyExpr ← instantiateMVarsQ argTyExpr
+    let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run { mayPostpone := (← read).mayPostpone }
+    let (pat, patVarDecls, newLevels) ← elabPat pat lctx localInsts type s.levelNames
 
-  let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run { mayPostpone := (← read).mayPostpone }
-  let (pat, patVarDecls, newLevels) ← elabPat pat lctx localInsts type s.levelNames
+    let mut s := s
+    let mut oldPatVarDecls : List PatVarDecl := []
+    for newLevel in newLevels do
+      let fvarId := FVarId.mk (← mkFreshId)
+      oldPatVarDecls := oldPatVarDecls ++ [{ ty := none, fvarId := fvarId, userName := newLevel }]
+      s := { s with levelBackSubst := s.levelBackSubst.insert (.param newLevel) (.fvar fvarId) }
 
-  let mut s := s
-  let mut oldPatVarDecls : List PatVarDecl := []
-  for newLevel in newLevels do
-    let fvarId := FVarId.mk (← mkFreshId)
-    oldPatVarDecls := oldPatVarDecls ++ [{ ty := none, fvarId := fvarId, userName := newLevel }]
-    s := { s with levelBackSubst := s.levelBackSubst.insert (.param newLevel) (.fvar fvarId) }
+    for ldecl in patVarDecls do
+      let qty ← (quoteExpr ldecl.type).run s
+      oldPatVarDecls := oldPatVarDecls ++ [{ ty := some qty, fvarId := ldecl.fvarId, userName := ldecl.userName }]
+      s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr (.quoted ldecl.toExpr) }
 
-  for ldecl in patVarDecls do
-    let qty ← (quoteExpr ldecl.type).run s
-    oldPatVarDecls := oldPatVarDecls ++ [{ ty := some qty, fvarId := ldecl.fvarId, userName := ldecl.userName }]
-    s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr (.quoted ldecl.toExpr) }
+    have m : Q(Type → Type) := emr.m
+    have γ : Q(Type) := emr.returnType
+    let inst ← synthInstanceQ q(Bind $m)
+    let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
+    have synthed : Q(Expr) := (← quoteExpr (← instantiateMVars pat) s)
+    let alt : Q($m $γ) := alt
+    makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
+      return Quoted.unsafeMk (← elabTerm body expectedType)
+  | _ => throwUnsupportedSyntax
 
-  have m : Q(Type → Type) := emr.m
-  have γ : Q(Type) := emr.returnType
-  let inst ← synthInstanceQ q(Bind $m)
-  let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
-  have synthed : Q(Expr) := (← quoteExpr (← instantiateMVars pat) s)
-  let alt : Q($m $γ) := alt
-  makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
-    return Quoted.unsafeMk (← elabTerm body expectedType)
-
-scoped syntax "_qq_match" term " := " term " | " doSeq : term
+scoped syntax "_qq_match" q_matcher " := " term " | " doSeq : term
 macro_rules
   | `(assert! (_qq_match $pat := $e | $alt); $x) => `(_qq_match $pat ← $e | (do $alt) in $x)
 
@@ -365,16 +380,16 @@ As an example, consider matching against a `n : Q(ℕ)`, which can be written
 In addition to the obvious `x` and `y` captures,
 in the example above `~q` also inserts into the context a term of type `$n =Q Nat.gcd $x $y`.
 -/
-scoped syntax (name := matcher) "~q(" term ")" : term
+add_decl_doc matcher
 
 partial def Impl.hasQMatch : Syntax → Bool
-  | `(~q($_)) => true
+  | `($_:q_matcher) => true
   | stx => stx.getArgs.any hasQMatch
 
 partial def Impl.floatQMatch (alt : TSyntax ``doSeq) : Term → StateT (List (TSyntax ``doSeqItem)) MacroM Term
-  | `(~q($term)) =>
+  | `($m:q_matcher) =>
     withFreshMacroScope do
-      let auxDoElem ← `(doSeqItem| let ~q($term) := x | $alt)
+      let auxDoElem ← `(doSeqItem| let $m:q_matcher := x | $alt)
       modify fun s => s ++ [auxDoElem]
       `(x)
   | stx => do match stx with
@@ -437,7 +452,11 @@ macro_rules
     match pat with
       | `(~q($pat)) =>
         let (pat, lifts) ← floatExprAntiquot 0 pat #[]
-        let t ← `(doSeqItem| do assert! (_qq_match $pat := $rhs | $alt))
+        let t ← `(doSeqItem| do assert! (_qq_match ~q($pat) := $rhs | $alt))
+        `(doElem| do $(lifts.push t):doSeqItem*)
+      | `(~ql($pat)) =>
+        let (pat, lifts) ← floatLevelAntiquot pat #[]
+        let t ← `(doSeqItem| do assert! (_qq_match ~ql($pat) := $rhs | $alt))
         `(doElem| do $(lifts.push t):doSeqItem*)
 
       | _ =>

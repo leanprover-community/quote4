@@ -72,7 +72,7 @@ def pairLit (u : Lean.Level) (α : Q(Type u)) (a : Q($α)) : MetaM Q($α × $α)
 -- `generalizing := true` is a no-op
 def pairLit' (u : Lean.Level) (α : Q(Type u)) (a : Q($α)) : MetaM Q($α × $α) := do
   match (generalizing := true) u, α, a with
-  | 0, ~q(Nat), n => return q(($n, $n))
+  | ~ql(0), ~q(Nat), n => return q(($n, $n))
   | 0, ~q(Int), z => return q(($z, $z))
   | _, _, _ => failure
 
