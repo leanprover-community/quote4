@@ -13,10 +13,19 @@ abbrev double (a : Nat) := a + a
 
 #eval summands q(inferInstance) q(double k + m)
 
+/--
+info: false
+---
+trace: x : Q(Nat) := q(k + m)
+a b : Q(Nat)
+match_eq✝ : (k + m) =Q «$a».add «$b»
+⊢ Bool
+-/
+#guard_msgs in
 #eval show MetaM Bool from do
   let x : Q(Nat) := q(k + m)
   match x with
-  | ~q(Nat.add $a $b) => return true
+  | ~q(Nat.add $a $b) => return by trace_state; exact true
   | _ => return false
 
 abbrev square (a : Nat) :=
