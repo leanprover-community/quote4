@@ -38,7 +38,7 @@ instance {n : Nat} : ReduceEval (BitVec n) where
 instance : ReduceEval UInt64 where
   reduceEval := fun e => do
     let e ← whnf e
-    if e.isAppOfArity ``UInt64.mk 1 then
+    if e.isAppOfArity ``UInt64.ofBitVec 1 then
       pure ⟨(← reduceEval (e.getArg! 0))⟩
     else
       throwFailedToEval e
@@ -46,7 +46,7 @@ instance : ReduceEval UInt64 where
 instance : ReduceEval USize where
   reduceEval := fun e => do
     let e ← whnf e
-    if e.isAppOfArity ``USize.mk 1 then
+    if e.isAppOfArity ``USize.ofBitVec 1 then
       let a ← whnf (e.getArg! 0)
       if a.isAppOfArity ``Fin.mk 3 then
         return USize.ofNat (← reduceEval (a.getArg! 1))
