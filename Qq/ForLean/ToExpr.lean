@@ -1,4 +1,8 @@
-import Lean
+module
+
+public import Lean
+
+public section
 
 open Lean
 
@@ -15,7 +19,7 @@ instance : ToExpr FVarId where
   toExpr i := mkApp (.const ``FVarId.mk []) (toExpr i.name)
 
 open Level in
-private def toExprLevel : Level → Expr
+def toExprLevel : Level → Expr
   | zero       => .const ``zero []
   | succ l     => mkApp (.const ``succ []) (toExprLevel l)
   | .max l₁ l₂ => mkApp2 (.const ``Level.max []) (toExprLevel l₁) (toExprLevel l₂)
@@ -23,7 +27,7 @@ private def toExprLevel : Level → Expr
   | param n    => mkApp (.const ``param []) (toExpr n)
   | mvar n     => mkApp (.const ``mvar []) (toExpr n)
 
-instance : ToExpr Level := ⟨toExprLevel, .const ``Level []⟩
+meta instance : ToExpr Level := ⟨toExprLevel, .const ``Level []⟩
 
 instance : ToExpr Literal where
   toTypeExpr := .const ``Literal []
@@ -55,7 +59,7 @@ instance : ToExpr MData where
     e
 
 open Expr Literal in
-private def toExprExpr : Expr → Expr
+meta def toExprExpr : Expr → Expr
   | bvar n        => mkApp (.const ``bvar []) (mkNatLit n)
   | fvar n        => mkApp (.const ``fvar []) (toExpr n)
   | mvar n        => mkApp (.const ``mvar []) (toExpr n)
@@ -69,4 +73,4 @@ private def toExprExpr : Expr → Expr
   | mdata md e    => mkApp2 (.const ``mdata []) (toExpr md) (toExprExpr e)
   | proj s i e    => mkApp3 (.const ``proj []) (toExpr s) (mkNatLit i) (toExprExpr e)
 
-instance : ToExpr Expr := ⟨toExprExpr, .const ``Expr []⟩
+meta instance : ToExpr Expr := ⟨toExprExpr, .const ``Expr []⟩

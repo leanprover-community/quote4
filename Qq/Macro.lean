@@ -1,7 +1,14 @@
-import Lean
-import Qq.ForLean.ReduceEval
-import Qq.ForLean.ToExpr
-import Qq.Typ
+module
+
+public import Lean
+public import Qq.ForLean.ReduceEval
+public import Qq.ForLean.ToExpr
+public import Qq.Typ
+meta import Lean.Elab.Term.TermElabM
+meta import Lean.Util.CollectLevelParams
+meta import Lean.Elab.SyntheticMVars
+
+public section
 /-!
 # The `q( )` and `Q( )` macros
 
@@ -24,7 +31,7 @@ inductive MVarSynth
   | type (unquotedMVar : MVarId) --> Quoted _
   | level (unquotedMVar : LMVarId) --> Level
 
-structure UnquoteState where
+meta structure UnquoteState where
   /--
   Quoted mvars in the outside lctx (of type `Level`, `Quoted _`, or `Type`).
   The outside mvars can also be of the form `?m x y z`.
@@ -154,7 +161,7 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
     }
     pure l
 
-partial def unquoteLevelMVar (mvar : Expr) : UnquoteM Level := do
+meta partial def unquoteLevelMVar (mvar : Expr) : UnquoteM Level := do
   let newMVar ← mkFreshLevelMVar
   modify fun s => { s with
     levelSubst := s.levelSubst.insert mvar newMVar
@@ -284,13 +291,13 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
 
 end
 
-def substLevel (a : Name) (b : Level) : UnquoteM Unit :=
+meta def substLevel (a : Name) (b : Level) : UnquoteM Unit :=
   modify fun s => { s with
     levelSubst := .ofList <| s.levelSubst.toList
       |>.map fun (x, u) => (x, u.instantiateParams [a] [b])
   }
 
-def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
+meta def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
@@ -307,7 +314,7 @@ def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
         if let .param n := u' then if !u'.occurs v' then substLevel n v'; continue
         if let .param n := v' then if !v'.occurs u' then substLevel n u'; continue
 
-def unquoteLCtx : UnquoteM Unit := do
+meta def unquoteLCtx : UnquoteM Unit := do
   unquoteLevelLCtx
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
@@ -418,7 +425,7 @@ partial def quoteExpr : Expr → QuoteM Expr
 Translates an arbitrary local context to a context of
 Q-annotated expressions. Used by `by_elabq` and `run_tacq`.
 -/
-def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
+meta def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
     UnquoteM (LocalContext × Array Expr) := do
   let mut quotedCtx := LocalContext.empty
   let mut assignments : Array Expr := #[]
@@ -448,7 +455,7 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
       exprBackSubst := s.exprBackSubst.insert (.fvar decl.fvarId) (.quoted (.fvar fid)) }
   return (quotedCtx, assignments)
 
-def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
+meta def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
   if ty.isAppOf ``Quoted then
     _ ← unquoteExprMVar mvar
@@ -464,7 +471,7 @@ def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
   else
     throwError "unsupported expected type for quoted expression{indentExpr ty}"
 
-def unquoteMVar (mvar : Expr) : UnquoteM Unit := do
+meta def unquoteMVar (mvar : Expr) : UnquoteM Unit := do
   unquoteLCtx
   unquoteMVarCore mvar
 
@@ -524,7 +531,7 @@ scoped elab "ql(" l:level ")" : term => do
 scoped syntax atomic(level " =QL ") level : term
 macro_rules | `($a:level =QL $b) => `(QuotedLevelDefEq ql($a) ql($b))
 
-def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
+meta def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let mainMVar ← mkFreshExprMVar expectedType
   let s ← (unquoteMVar mainMVar *> get).run' { mayPostpone := (← read).mayPostpone }
 

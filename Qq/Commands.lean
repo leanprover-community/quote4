@@ -1,5 +1,11 @@
-import Qq.Macro
-import Lean
+module
+
+public import Qq.Macro
+public import Lean
+meta import Lean.Elab.Term.TermElabM
+meta import Qq.Macro
+
+@[expose] public section
 /-!
 # `run_tacq` and `by_elabq`
 

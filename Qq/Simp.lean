@@ -1,4 +1,8 @@
-import Qq.MetaM
+module
+
+public import Qq.MetaM
+
+@[expose] public section
 
 /-!
 # Qq integration for `simproc`s
