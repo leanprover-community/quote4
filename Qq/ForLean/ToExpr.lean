@@ -27,7 +27,7 @@ def toExprLevel : Level → Expr
   | param n    => mkApp (.const ``param []) (toExpr n)
   | mvar n     => mkApp (.const ``mvar []) (toExpr n)
 
-meta instance : ToExpr Level := ⟨toExprLevel, .const ``Level []⟩
+instance : ToExpr Level := ⟨toExprLevel, .const ``Level []⟩
 
 instance : ToExpr Literal where
   toTypeExpr := .const ``Literal []
@@ -59,7 +59,7 @@ instance : ToExpr MData where
     e
 
 open Expr Literal in
-meta def toExprExpr : Expr → Expr
+def toExprExpr : Expr → Expr
   | bvar n        => mkApp (.const ``bvar []) (mkNatLit n)
   | fvar n        => mkApp (.const ``fvar []) (toExpr n)
   | mvar n        => mkApp (.const ``mvar []) (toExpr n)
@@ -73,4 +73,4 @@ meta def toExprExpr : Expr → Expr
   | mdata md e    => mkApp2 (.const ``mdata []) (toExpr md) (toExprExpr e)
   | proj s i e    => mkApp3 (.const ``proj []) (toExpr s) (mkNatLit i) (toExprExpr e)
 
-meta instance : ToExpr Expr := ⟨toExprExpr, .const ``Expr []⟩
+instance : ToExpr Expr := ⟨toExprExpr, .const ``Expr []⟩

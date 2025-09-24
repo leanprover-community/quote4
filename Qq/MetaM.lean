@@ -2,6 +2,7 @@ module
 
 public import Qq.Macro
 public import Qq.Delab
+import Qq.Typ
 
 @[expose] public section
 

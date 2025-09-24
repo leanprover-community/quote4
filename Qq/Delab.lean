@@ -21,7 +21,7 @@ register_option pp.qq : Bool := {
 }
 
 -- TODO: this probably exists in the library
-private def failureOnError (x : MetaM α) : DelabM α := do
+private meta def failureOnError (x : MetaM α) : DelabM α := do
   let y : MetaM (Option α) := do try return some (← x) catch _ => return none
   match ← y with
     | some a => return a
@@ -32,14 +32,14 @@ private meta def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
   let newE ← unquoteExpr e
   return (newE, (← get).unquoted)
 
-def checkQqDelabOptions : DelabM Unit := do
+meta def checkQqDelabOptions : DelabM Unit := do
   unless ← getPPOption (·.getBool `pp.qq true) do failure
   if ← getPPOption getPPExplicit then failure
 
-instance : MonadLift UnquoteM (StateT UnquoteState DelabM) where
+meta instance : MonadLift UnquoteM (StateT UnquoteState DelabM) where
   monadLift k s := k s
 
-def delabQuoted : StateT UnquoteState DelabM Term := do
+meta def delabQuoted : StateT UnquoteState DelabM Term := do
   let e ← getExpr
   -- `(failure : DelabM _)` is of course completely different than `(failure : MetaM _)`...
   let some newE ← (try some <$> unquoteExpr e catch _ => failure : UnquoteM _) | failure

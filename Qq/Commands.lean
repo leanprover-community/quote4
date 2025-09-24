@@ -4,6 +4,7 @@ public import Qq.Macro
 public import Lean
 meta import Lean.Elab.Term.TermElabM
 meta import Qq.Macro
+meta import Qq.AssertInstancesCommute
 
 @[expose] public section
 /-!
@@ -20,7 +21,7 @@ Build a let expression, similarly to `mkLetFVars`.
 The array of `values` will be assigned to the current local context,
 which is expected to consist of `cdecl`s.
 -/
-private def mkLetFVarsFromValues (values : Array Expr) (body : Expr) : MetaM Expr := do
+private meta def mkLetFVarsFromValues (values : Array Expr) (body : Expr) : MetaM Expr := do
   let ctx ← getLCtx
   let ctxLet := ctx.foldl (init := LocalContext.empty) fun part decl =>
     part.addDecl (.ldecl decl.index decl.fvarId decl.userName
