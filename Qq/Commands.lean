@@ -6,7 +6,7 @@ meta import Lean.Elab.Term.TermElabM
 meta import Qq.Macro
 meta import Qq.AssertInstancesCommute
 
-@[expose] public section
+public section
 /-!
 # `run_tacq` and `by_elabq`
 

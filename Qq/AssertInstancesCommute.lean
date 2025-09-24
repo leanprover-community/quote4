@@ -2,7 +2,7 @@ module
 
 public import Qq.MetaM
 
-@[expose] public section
+public section
 
 namespace Qq
 

@@ -4,7 +4,7 @@ public import Qq.Macro
 public import Qq.Delab
 import Qq.Typ
 
-@[expose] public section
+public section
 
 /-!
 # `Qq`-ified spellings of functions in `Lean.Meta`
