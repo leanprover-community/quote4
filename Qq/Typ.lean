@@ -1,4 +1,8 @@
-import Lean
+module
+
+public import Lean
+
+@[expose] public section
 open Lean
 
 set_option linter.unusedVariables false
@@ -17,7 +21,7 @@ Creates a quoted expression.  Requires that `e` has type `α`.
 
 You should usually write this using the notation `q($e)`.
 -/
-protected def Quoted.unsafeMk (e : Expr) : Quoted α := e
+protected meta def Quoted.unsafeMk (e : Expr) : Quoted α := e
 
 instance : BEq (Quoted α) := inferInstanceAs (BEq Expr)
 instance : Hashable (Quoted α) := inferInstanceAs (Hashable Expr)

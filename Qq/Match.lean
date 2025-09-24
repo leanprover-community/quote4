@@ -1,7 +1,11 @@
-import Qq.Macro
-import Qq.MetaM
-import Qq.ForLean.Do
-import Qq.SortLocalDecls
+module
+
+public import Qq.Macro
+public import Qq.MetaM
+public import Qq.ForLean.Do
+public import Qq.SortLocalDecls
+
+@[expose] public section
 /-!
 # `~q()` matching
 

@@ -1,5 +1,9 @@
-import Qq.Macro
-import Qq.Delab
+module
+
+public import Qq.Macro
+public import Qq.Delab
+
+@[expose] public section
 
 /-!
 # `Qq`-ified spellings of functions in `Lean.Meta`
