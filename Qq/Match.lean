@@ -5,6 +5,8 @@ public import Qq.MetaM
 public import Qq.ForLean.Do
 public import Qq.SortLocalDecls
 meta import Qq.Delab
+meta import Qq.MetaM
+meta import Qq.ForLean.Do
 
 @[expose] public section
 /-!
@@ -79,22 +81,22 @@ structure PatVarDecl where
   fvarId : FVarId
   userName : Name
 
-def PatVarDecl.fvarTy : PatVarDecl → Q(Type)
+meta def PatVarDecl.fvarTy : PatVarDecl → Q(Type)
   | { ty := none, .. } => q(Level)
   | { ty := some _, .. } => q(Expr)
 
 def PatVarDecl.fvar (decl : PatVarDecl) : Q($((decl.fvarTy))) :=
   Expr.fvar decl.fvarId
 
-def mkIsDefEqType : List PatVarDecl → Q(Type)
+meta def mkIsDefEqType : List PatVarDecl → Q(Type)
   | [] => q(Bool)
   | decl :: decls => q($(decl.fvarTy) × $(mkIsDefEqType decls))
 
-def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls))
+meta def mkIsDefEqResult (val : Bool) : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls))
   | [] => show Q(Bool) from q($val)
   | decl :: decls => q(($(decl.fvar), $(mkIsDefEqResult val decls)))
 
-def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) → Q(Bool)
+meta def mkIsDefEqResultVal : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) → Q(Bool)
   | [], val => q($val)
   | _ :: decls, val => mkIsDefEqResultVal decls q($val.2)
 
@@ -107,7 +109,7 @@ def mkLet' (n : Name) (fvar : Expr) (ty : Expr) (val : Expr) (body : Expr) : Met
 def mkLambdaQ (n : Name) (fvar : Quoted α) (body : Quoted β) : MetaM (Quoted (mkForall n BinderInfo.default α β)) :=
   return mkLambda n BinderInfo.default α (← body.abstractM #[fvar])
 
-def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → MetaM Q(MetaM $(mkIsDefEqType decls))
+meta def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → MetaM Q(MetaM $(mkIsDefEqType decls))
   | [] => return q(return $(mkIsDefEqResult true decls))
   -- https://github.com/leanprover/lean4/issues/501
   | { ty := none, fvarId := fvarId, userName := userName } :: rest => do
@@ -121,7 +123,7 @@ def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → MetaM Q(M
       mkLambdaQ _ decl.fvar q($(← mkInstantiateMVars decls rest))
     return q(Bind.bind (instantiateMVars $(decl.fvar)) $instMVars)
 
-def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
+meta def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
     List PatVarDecl → MetaM Q(MetaM $(mkIsDefEqType decls))
   | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
@@ -135,15 +137,15 @@ def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
       let matches? ← withReducible $ isDefEq $pat $discr
       (if matches? then $instMVars else return $(mkIsDefEqResult false decls)))
 
-def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : MetaM Q(MetaM $(mkIsDefEqType decls)) := do
+meta def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : MetaM Q(MetaM $(mkIsDefEqType decls)) := do
   return q(withNewMCtxDepth $(← mkIsDefEqCore decls pat discr decls))
 
-def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLiftT MetaM m] [MonadLCtx m]
+meta def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLiftT MetaM m] [MonadLCtx m]
     (fvarId : FVarId) (userName : Name) (val : (Quoted α)) (k : (Quoted α) → m (Quoted β)) : m (Quoted β) := do
   withExistingLocalDecls [LocalDecl.cdecl default fvarId userName α .default .default] do
     return Quoted.unsafeMk $ ← mkLet' userName (.fvar fvarId) α val (← k (.fvar fvarId))
 
-def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
+meta def mkQqLets {γ : Q(Type)} : (decls : List PatVarDecl) → Q($(mkIsDefEqType decls)) →
     TermElabM Q($γ) → TermElabM Q($γ)
   | { ty := none, fvarId := fvarId, userName := userName } :: decls, acc, cb =>
     withLetHave fvarId userName (α := q(Level)) q($acc.1) fun _ => mkQqLets decls q($acc.2) cb
@@ -159,7 +161,7 @@ def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
   | { ty := none, .. } :: decls, e =>
     replaceTempExprsByQVars decls e
 
-def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLiftT MetaM $m)) (_instBind : Q(Bind $m))
+meta def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLiftT MetaM $m)) (_instBind : Q(Bind $m))
     (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(Quoted (.sort $uTy)))
     (pat discr : Q(Quoted $ty)) (alt : Q($m $γ)) (expectedType : Expr)
     (k : Expr → TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
@@ -187,7 +189,7 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLi
       Quoted.unsafeMk $ ← mkLambda' `__result fv (mkIsDefEqType decls) next
   pure q(Bind.bind $(← mkIsDefEq decls pat discr) $next)
 
-def unquoteForMatch (et : Expr) : UnquoteM (LocalContext × LocalInstances × Expr) := do
+meta def unquoteForMatch (et : Expr) : UnquoteM (LocalContext × LocalInstances × Expr) := do
   unquoteLCtx
   let newET ← unquoteExpr et
   let newLCtx := (← get).unquoted
