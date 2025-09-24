@@ -1,6 +1,7 @@
 module
 
 public import Qq.MetaM
+meta import Qq.Delab
 
 @[expose] public section
 
@@ -27,7 +28,7 @@ def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
         return (fvar.fvarId!, result)
   return none
 
-def findRedundantLocalInstQuoted? :
+meta def findRedundantLocalInstQuoted? :
     TermElabM (Option (FVarId × (u : Q(Level)) × (ty : Q(Quoted (.sort $u))) × Q(Quoted $ty) × Q(Quoted $ty))) := do
   for ldecl in ← getLCtx do
     let ty ← whnfR ldecl.type

@@ -1,6 +1,7 @@
 module
 
 public import Qq.MetaM
+meta import Qq.Delab
 
 @[expose] public section
 

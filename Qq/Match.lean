@@ -4,6 +4,7 @@ public import Qq.Macro
 public import Qq.MetaM
 public import Qq.ForLean.Do
 public import Qq.SortLocalDecls
+meta import Qq.Delab
 
 @[expose] public section
 /-!
