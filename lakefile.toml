@@ -1,5 +1,10 @@
 name = "Qq"
+testDriver = "examples"
 defaultTargets = ["Qq"]
 
 [[lean_lib]]
 name = "Qq"
+
+[[lean_lib]]
+name = "examples"
+globs = ["examples.+"]

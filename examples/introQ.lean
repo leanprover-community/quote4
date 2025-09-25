@@ -16,4 +16,8 @@ elab "demo" : term => do
   assignQ q($m) q(sorry)
   instantiateMVars P
 
+/--
+info: fun {n} => sorry : ∀ {n : Nat}, n = 1
+-/
+#guard_msgs in
 #check demo
