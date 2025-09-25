@@ -15,7 +15,7 @@ example {α : Q(Type u)} (inst : Q(Inhabited $α)) : Q(∃ x : $α, x = x) :=
 
 example : Q(let x := 5; x = x) := q(by simp)
 
-#eval show Q(∀ n : UInt64, n.val = n.val) from q(fun _ => by simp)
+#eval show Q(∀ n : UInt64, n.toFin = n.toFin) from q(fun _ => by simp)
 
 def foo' (n : Nat) : Q(Q($($n) = $($n))) := q(q(by simp))
 #eval foo' 3
