@@ -1,4 +1,8 @@
-import Lean
+module
+
+public import Lean
+
+public section
 open Lean Meta
 
 namespace Lean.Meta
@@ -6,7 +10,7 @@ namespace Lean.Meta
 def throwFailedToEval (e : Expr) : MetaM α :=
   throwError "reduceEval: failed to evaluate argument{indentExpr e}"
 
-private partial def evalList [ReduceEval α] (e : Expr) : MetaM (List α) := do
+partial def evalList [ReduceEval α] (e : Expr) : MetaM (List α) := do
   let e ← whnf e
   let .const c _ := e.getAppFn | throwFailedToEval e
   let nargs := e.getAppNumArgs

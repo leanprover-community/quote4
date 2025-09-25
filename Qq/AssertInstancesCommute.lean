@@ -1,4 +1,8 @@
-import Qq.MetaM
+module
+
+public import Qq.MetaM
+
+public section
 
 namespace Qq
 
@@ -7,7 +11,7 @@ scoped syntax "assumeInstancesCommute'" term : term
 namespace Impl
 open Lean Meta Elab Term
 
-def isRedundantLocalInst? (inst : FVarId) : MetaM (Option Expr) := do
+meta def isRedundantLocalInst? (inst : FVarId) : MetaM (Option Expr) := do
   let ldecl ← inst.getDecl
   if ldecl.hasValue then return none
   let rest := (← getLocalInstances).filter (·.fvar != .fvar inst)
@@ -15,7 +19,7 @@ def isRedundantLocalInst? (inst : FVarId) : MetaM (Option Expr) := do
   let some inst ← synthInstance? ldecl.type | return none
   return if (← makeDefEq ldecl.toExpr inst).isSome then inst else none
 
-def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
+meta def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
   for {fvar, ..} in ← withUnquotedLCtx getLocalInstances do
     if let some (.quoted (.fvar quotedFVar)) := (← read).exprBackSubst[fvar]? then
       if (← quotedFVar.getDecl).hasValue then continue
@@ -23,7 +27,7 @@ def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
         return (fvar.fvarId!, result)
   return none
 
-def findRedundantLocalInstQuoted? :
+meta def findRedundantLocalInstQuoted? :
     TermElabM (Option (FVarId × (u : Q(Level)) × (ty : Q(Quoted (.sort $u))) × Q(Quoted $ty) × Q(Quoted $ty))) := do
   for ldecl in ← getLCtx do
     let ty ← whnfR ldecl.type

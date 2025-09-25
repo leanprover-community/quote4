@@ -1,7 +1,14 @@
-import Lean
-import Qq.ForLean.ReduceEval
-import Qq.ForLean.ToExpr
-import Qq.Typ
+module
+
+public import Lean
+public meta import Qq.ForLean.ReduceEval
+public meta import Qq.ForLean.ToExpr
+public meta import Qq.Typ
+meta import Lean.Elab.Term.TermElabM
+meta import Lean.Util.CollectLevelParams
+meta import Lean.Elab.SyntheticMVars
+
+public section
 /-!
 # The `q( )` and `Q( )` macros
 
@@ -15,7 +22,7 @@ namespace Qq
 
 namespace Impl
 
-inductive ExprBackSubstResult
+meta inductive ExprBackSubstResult
   | quoted (e : Expr)
   | unquoted (e : Expr)
 
@@ -24,7 +31,7 @@ inductive MVarSynth
   | type (unquotedMVar : MVarId) --> Quoted _
   | level (unquotedMVar : LMVarId) --> Level
 
-structure UnquoteState where
+meta structure UnquoteState where
   /--
   Quoted mvars in the outside lctx (of type `Level`, `Quoted _`, or `Type`).
   The outside mvars can also be of the form `?m x y z`.
@@ -57,10 +64,10 @@ abbrev UnquoteM := StateT UnquoteState MetaM
 
 abbrev QuoteM := ReaderT UnquoteState MetaM
 
-instance : MonadLift QuoteM UnquoteM where
+meta instance : MonadLift QuoteM UnquoteM where
   monadLift k := do k (← get)
 
-def determineLocalInstances (lctx : LocalContext) : MetaM LocalInstances := do
+meta def determineLocalInstances (lctx : LocalContext) : MetaM LocalInstances := do
   let mut localInsts : LocalInstances := {}
   for ldecl in lctx do
     match (← isClass? ldecl.type) with
@@ -68,19 +75,19 @@ def determineLocalInstances (lctx : LocalContext) : MetaM LocalInstances := do
       | none => pure ()
   pure localInsts
 
-def withUnquotedLCtx [MonadControlT MetaM m] [Monad m] [MonadLiftT QuoteM m] (k : m α) : m α := do
+meta def withUnquotedLCtx [MonadControlT MetaM m] [Monad m] [MonadLiftT QuoteM m] (k : m α) : m α := do
   let unquoted := (← (read : QuoteM _)).unquoted
   withLCtx unquoted (← (determineLocalInstances unquoted : QuoteM _)) k
 
 open Name in
-def addDollar : Name → Name
+meta def addDollar : Name → Name
   | anonymous => str anonymous "$"
   | str anonymous s => str anonymous ("$" ++ s)
   | str n s => str (addDollar n) s
   | num n i => num (addDollar n) i
 
 open Name in
-def removeDollar : Name → Option Name
+meta def removeDollar : Name → Option Name
   | anonymous => none
   | str anonymous "$" => some anonymous
   | str anonymous s =>
@@ -89,7 +96,7 @@ def removeDollar : Name → Option Name
   | num n i => (removeDollar n).map (num . i)
 
 open Name in
-def stripDollars : Name → Name
+meta def stripDollars : Name → Name
   | anonymous => anonymous
   | str n "$" => stripDollars n
   | str anonymous s =>
@@ -98,40 +105,40 @@ def stripDollars : Name → Name
   | str n s => str (stripDollars n) s
   | num n i => num (stripDollars n) i
 
-def addSyntaxDollar : Syntax → Syntax
+meta def addSyntaxDollar : Syntax → Syntax
   | .ident info rawVal            val  preresolved =>
     .ident info rawVal (addDollar val) preresolved
   | stx => panic! s!"addSyntaxDollar {stx}"
 
-def mkAbstractedLevelName (e : Expr) : MetaM Name :=
+meta def mkAbstractedLevelName (e : Expr) : MetaM Name :=
   return e.getAppFn.constName?.getD `udummy ++ (← mkFreshId)
 
-def isAssignablePattern (e : Expr) : MetaM Bool := do
+meta def isAssignablePattern (e : Expr) : MetaM Bool := do
   let e ← instantiateMVars (← whnf e)
   let .mvar mvarId := e.getAppFn | return false
   unless ← mvarId.isAssignable do return false
   if (← mvarId.getKind) matches .synthetic then return false
   return e.getAppArgs.all (·.isFVar) && e.getAppArgs.allDiff
 
-def isBad (e : Expr) : Bool := Id.run do
+meta def isBad (e : Expr) : Bool := Id.run do
   if let .const (.str _ "rec") _ := e.getAppFn then
     return true
   return false
 
 -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/How.20to.20WHNF.20without.20exposing.20recursors.3F/near/249743042
-partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
+meta def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
   let e ← whnfCore e
   let e0 := if isBad e then e0 else e
   match ← unfoldDefinition? e with
     | some e => whnf e (if isBad e then e0 else e)
     | none => pure e0
 
-def whnfR (e : Expr) : MetaM Expr :=
+meta def whnfR (e : Expr) : MetaM Expr :=
   withReducible (whnf e)
 
 mutual
 
-partial def unquoteLevel (e : Expr) : UnquoteM Level := do
+meta partial def unquoteLevel (e : Expr) : UnquoteM Level := do
   let e ← whnf e
   if let some l := (← get).levelSubst[e]? then
     return l
@@ -154,7 +161,7 @@ partial def unquoteLevel (e : Expr) : UnquoteM Level := do
     }
     pure l
 
-partial def unquoteLevelMVar (mvar : Expr) : UnquoteM Level := do
+meta partial def unquoteLevelMVar (mvar : Expr) : UnquoteM Level := do
   let newMVar ← mkFreshLevelMVar
   modify fun s => { s with
     levelSubst := s.levelSubst.insert mvar newMVar
@@ -165,7 +172,7 @@ partial def unquoteLevelMVar (mvar : Expr) : UnquoteM Level := do
 
 end
 
-partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
+meta def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
   let e ← whnf e
   if e.isAppOfArity ``List.nil 1 then
     pure []
@@ -174,7 +181,7 @@ partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
   else
     throwFailedToEval e
 
-def mkAbstractedName (e : Expr) : UnquoteM Name := do
+meta def mkAbstractedName (e : Expr) : UnquoteM Name := do
   have base : Name :=
     match e.getAppFn.constName? with
     | some (.str _ s) => .mkSimple s!"${s}"
@@ -187,10 +194,10 @@ def mkAbstractedName (e : Expr) : UnquoteM Name := do
       return n
   unreachable!
 
-@[inline] opaque betaRev' (e : Expr) (revArgs : List Expr) : Expr :=
+@[inline] meta opaque betaRev' (e : Expr) (revArgs : List Expr) : Expr :=
   e.betaRev revArgs.toArray
 
-def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
+meta def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
   let decl ← a.getDecl
   if decl.isLet then
     return none
@@ -203,14 +210,14 @@ def makeZetaReduce (a : FVarId) (b : Expr) : MetaM (Option LocalContext) := do
   let newLCtx := toRevert.filter (· != a) |>.foldl (init := newLCtx) (·.addDecl <| oldLCtx.get! ·)
   return newLCtx
 
-def makeDefEq (a b : Expr) : MetaM (Option LocalContext) := do
+meta def makeDefEq (a b : Expr) : MetaM (Option LocalContext) := do
   if let .fvar a ← whnf a then if let some lctx ← makeZetaReduce a b then return lctx
   if let .fvar b ← whnf b then if let some lctx ← makeZetaReduce b a then return lctx
   return none
 
 mutual
 
-partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
+meta def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
   let e ← whnf e
   if e.isAppOfArity ``List.nil 1 then
     pure []
@@ -219,7 +226,7 @@ partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
   else
     throwFailedToEval e
 
-partial def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
+meta def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
   unless ty.isAppOf ``Quoted do throwError "not of type Q(_):{indentExpr ty}"
   have et := ty.getArg! 0
@@ -232,7 +239,7 @@ partial def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   }
   return newMVar
 
-partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
+meta def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if e.isAppOfArity ``Quoted.unsafeMk 2 then return ← unquoteExpr (e.getArg! 1)
   if e.isAppOfArity ``toExpr 3 then return e.getArg! 2
   let e ← instantiateMVars (← whnf e)
@@ -284,13 +291,13 @@ partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
 
 end
 
-def substLevel (a : Name) (b : Level) : UnquoteM Unit :=
+meta def substLevel (a : Name) (b : Level) : UnquoteM Unit :=
   modify fun s => { s with
     levelSubst := .ofList <| s.levelSubst.toList
       |>.map fun (x, u) => (x, u.instantiateParams [a] [b])
   }
 
-def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
+meta def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
     let ty := ldecl.type
@@ -307,7 +314,7 @@ def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
         if let .param n := u' then if !u'.occurs v' then substLevel n v'; continue
         if let .param n := v' then if !v'.occurs u' then substLevel n u'; continue
 
-def unquoteLCtx : UnquoteM Unit := do
+meta def unquoteLCtx : UnquoteM Unit := do
   unquoteLevelLCtx
   for ldecl in (← getLCtx) do
     let fv := ldecl.toExpr
@@ -348,7 +355,7 @@ def unquoteLCtx : UnquoteM Unit := do
         exprSubst := s.exprSubst.insert fv fv
       }
 
-def isLevelFVar (n : Name) : MetaM (Option Expr) := do
+meta def isLevelFVar (n : Name) : MetaM (Option Expr) := do
   match (← getLCtx).findFromUserName? n with
     | none => pure none
     | some decl =>
@@ -357,7 +364,7 @@ def isLevelFVar (n : Name) : MetaM (Option Expr) := do
       else
         none
 
-def quoteLevel : Level → QuoteM Expr
+meta def quoteLevel : Level → QuoteM Expr
   | .zero => return .const ``Level.zero []
   | .succ u => return mkApp (.const ``Level.succ []) (← quoteLevel u)
   | l@(.mvar ..) => do
@@ -375,13 +382,13 @@ def quoteLevel : Level → QuoteM Expr
           | none =>
             throwError "universe parameter {n} not of type Level"
 
-def quoteLevelList : List Level → QuoteM Expr
+meta def quoteLevelList : List Level → QuoteM Expr
   | [] => return mkApp (.const ``List.nil [.zero]) (.const ``Level [])
   | l::ls => do
     return mkApp3 (.const ``List.cons [.zero]) (.const ``Level [])
       (← quoteLevel l) (← quoteLevelList ls)
 
-partial def quoteExpr : Expr → QuoteM Expr
+meta def quoteExpr : Expr → QuoteM Expr
   | .bvar i => return mkApp (.const ``Expr.bvar []) (toExpr i)
   | e@(.fvar ..) => do
     let some r := (← read).exprBackSubst[e]? | throwError "unknown free variable {e}"
@@ -418,7 +425,7 @@ partial def quoteExpr : Expr → QuoteM Expr
 Translates an arbitrary local context to a context of
 Q-annotated expressions. Used by `by_elabq` and `run_tacq`.
 -/
-def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
+meta def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
     UnquoteM (LocalContext × Array Expr) := do
   let mut quotedCtx := LocalContext.empty
   let mut assignments : Array Expr := #[]
@@ -448,7 +455,7 @@ def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
       exprBackSubst := s.exprBackSubst.insert (.fvar decl.fvarId) (.quoted (.fvar fid)) }
   return (quotedCtx, assignments)
 
-def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
+meta def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
   if ty.isAppOf ``Quoted then
     _ ← unquoteExprMVar mvar
@@ -464,21 +471,21 @@ def unquoteMVarCore (mvar : Expr) : UnquoteM Unit := do
   else
     throwError "unsupported expected type for quoted expression{indentExpr ty}"
 
-def unquoteMVar (mvar : Expr) : UnquoteM Unit := do
+meta def unquoteMVar (mvar : Expr) : UnquoteM Unit := do
   unquoteLCtx
   unquoteMVarCore mvar
 
-def MVarSynth.isAssigned : MVarSynth → MetaM Bool
+meta def MVarSynth.isAssigned : MVarSynth → MetaM Bool
   | .term _ newMVar => newMVar.isAssigned
   | .type newMVar => newMVar.isAssigned
   | .level newMVar => isLevelMVarAssigned newMVar
 
-def MVarSynth.synth : MVarSynth → QuoteM Expr
+meta def MVarSynth.synth : MVarSynth → QuoteM Expr
   | .term et newMVar => return mkApp2 (.const ``Quoted.unsafeMk []) et (← quoteExpr (← instantiateMVars (.mvar newMVar)))
   | .type newMVar => return mkApp (.const ``Quoted []) (← quoteExpr (← instantiateMVars (.mvar newMVar)))
   | .level newMVar => do quoteLevel (← instantiateLevelMVars (.mvar newMVar))
 
-def lctxHasMVar : MetaM Bool := do
+meta def lctxHasMVar : MetaM Bool := do
   (← getLCtx).anyM fun decl => return (← instantiateLocalDeclMVars decl).hasExprMVar
 
 end Impl
@@ -486,14 +493,14 @@ end Impl
 open Lean.Elab Lean.Elab.Tactic Lean.Elab.Term Impl
 
 @[specialize]
-def withProcessPostponed [Monad m] [MonadFinally m] [MonadLiftT MetaM m] (k : m α) : m α := do
+meta def withProcessPostponed [Monad m] [MonadFinally m] [MonadLiftT MetaM m] (k : m α) : m α := do
   let postponed ← getResetPostponed
   try
     k <* discard (processPostponed (mayPostpone := false) (exceptionOnFailure := true))
   finally
     setPostponed (postponed ++ (← getPostponed))
 
-def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α × Array Name)) : TermElabM α := do
+meta def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α × Array Name)) : TermElabM α := do
   Term.withLevelNames s.levelNames do
     let (res, refdLevels) ← try k catch e =>
       if let some n := isAutoBoundImplicitLocalException? e then
@@ -524,7 +531,7 @@ scoped elab "ql(" l:level ")" : term => do
 scoped syntax atomic(level " =QL ") level : term
 macro_rules | `($a:level =QL $b) => `(QuotedLevelDefEq ql($a) ql($b))
 
-def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
+meta def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let mainMVar ← mkFreshExprMVar expectedType
   let s ← (unquoteMVar mainMVar *> get).run' { mayPostpone := (← read).mayPostpone }
 
@@ -603,10 +610,10 @@ namespace Impl
 support `Q($(foo) ∨ False)`
 -/
 
-private def push [Monad m] (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) m Unit :=
+private meta def push [Monad m] (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) m Unit :=
   modify fun s => s.push (i, t, l)
 
-partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax) :
+meta def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax) :
     StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
   if stx.isAntiquot && !stx.isEscapedAntiquot then
     withFreshMacroScope do
@@ -618,7 +625,7 @@ partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax) :
     | stx => return stx
 
 open TSyntax.Compat in
-partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
+meta def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
   | `(Q($x)) => do `(Q($(← floatExprAntiquot' (depth + 1) x)))
   | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
@@ -641,7 +648,7 @@ partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
       | stx => pure stx
 
 open TSyntax.Compat in
-partial def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
+meta def floatExprAntiquot [Monad m] [MonadQuotation m] (depth : Nat) :
     Term → StateT (Array $ Ident × Term × Term) m Term :=
   fun t s => do
     let (t, lifts) ← floatExprAntiquot' depth t (s.map fun (a,t,l) => (a,t,l))
