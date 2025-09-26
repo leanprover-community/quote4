@@ -11,6 +11,8 @@ opaque m : Nat
 
 abbrev double (a : Nat) := a + a
 
+/-- info: [Expr.const `k [], Expr.const `k [], Expr.const `m []] -/
+#guard_msgs in
 #eval summands q(inferInstance) q(double k + m)
 
 /--
@@ -32,8 +34,23 @@ abbrev square (a : Nat) :=
   have : Add Nat := ⟨(· * ·)⟩
   a + a
 
+/-- info: 100 -/
+#guard_msgs in
 #eval square 10
+/--
+info: [Expr.const `k [], (Expr.const `square []).app ((Expr.const `square []).app (Expr.const `k []))]
+-/
+#guard_msgs in
 #eval summands q(inferInstance) q(k + square (square k))
+/--
+info: [((((((Expr.const `HMul.hMul [Level.zero, Level.zero, Level.zero]).app (Expr.const `Nat [])).app
+                    (Expr.const `Nat [])).app
+                (Expr.const `Nat [])).app
+            (((Expr.const `instHMul [Level.zero]).app (Expr.const `Nat [])).app (Expr.const `instMulNat []))).app
+        (Expr.const `k [])).app
+    ((Expr.const `square []).app ((Expr.const `square []).app (Expr.const `k [])))]
+-/
+#guard_msgs in
 #eval summands q(⟨(· * ·)⟩) q(k * square (square k))
 
 def matchProd (e : Nat × Q(Nat)) : MetaM Bool := do

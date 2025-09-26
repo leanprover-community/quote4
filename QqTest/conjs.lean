@@ -7,6 +7,10 @@ elab "print_conjs" : tactic => do
       if let ~q($p ∧ $q) := ty then
         logInfo m!"left = {p}, right = {q}"
 
-example (h : true ∧ False) : true := by
+/--
+info: left = true = true, right = False
+-/
+#guard_msgs in
+example (_ : true ∧ False) : true := by
   print_conjs
   trivial
