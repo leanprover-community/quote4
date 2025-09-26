@@ -1,10 +1,10 @@
 name = "Qq"
-testDriver = "examples"
+testDriver = "QqTest"
 defaultTargets = ["Qq"]
 
 [[lean_lib]]
 name = "Qq"
 
 [[lean_lib]]
-name = "examples"
-globs = ["examples.+"]
+name = "QqTest"
+globs = ["QqTest.+"]
