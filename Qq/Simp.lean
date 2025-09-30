@@ -1,8 +1,4 @@
-module
-
-public import Qq.MetaM
-
-public section
+import Qq.MetaM
 
 /-!
 # Qq integration for `simproc`s
@@ -28,7 +24,7 @@ variable {u : Level} {α : Q(Sort u)}
 namespace Lean.Meta.Simp
 
 /-- A copy of `Meta.Simp.Result` with explicit types. -/
-@[expose] def ResultQ (_e : Q($α)) : Type := Lean.Meta.Simp.Result
+def ResultQ (_e : Q($α)) : Type := Lean.Meta.Simp.Result
 
 /-- A copy of `Meta.Simp.Result.mk` with explicit types. -/
 @[inline] def ResultQ.mk {e : Q($α)}
@@ -38,7 +34,7 @@ namespace Lean.Meta.Simp
   {expr, proof?, cache}
 
 /-- A copy of `Meta.Simp.Step` with explicit types. -/
-@[expose] def StepQ (_e : Q($α)) : Type := Step
+def StepQ (_e : Q($α)) : Type := Step
 
 @[inherit_doc Step.done, inline]
 def StepQ.done {e : Q($α)} (r : ResultQ e) : StepQ e := Step.done r

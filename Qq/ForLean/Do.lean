@@ -1,8 +1,4 @@
-module
-
-public import Lean
-
-public section
+import Lean
 
 /-!
 Make `Lean.Elab.Term.extractBind` public.
