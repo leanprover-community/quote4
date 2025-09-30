@@ -1,8 +1,4 @@
-module
-
-public import Lean
-
-public section
+import Lean
 open Lean
 
 set_option linter.unusedVariables false
@@ -14,14 +10,14 @@ namespace Qq
 
 You should usually write this using the notation `Q($α)`.
 -/
-@[expose] def Quoted (α : Expr) := Expr
+def Quoted (α : Expr) := Expr
 
 /--
 Creates a quoted expression.  Requires that `e` has type `α`.
 
 You should usually write this using the notation `q($e)`.
 -/
-@[expose] protected def Quoted.unsafeMk (e : Expr) : Quoted α := e
+protected def Quoted.unsafeMk (e : Expr) : Quoted α := e
 
 instance : BEq (Quoted α) := inferInstanceAs (BEq Expr)
 instance : Hashable (Quoted α) := inferInstanceAs (Hashable Expr)

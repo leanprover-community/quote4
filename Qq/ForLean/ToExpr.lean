@@ -1,8 +1,4 @@
-module
-
-public import Lean
-
-public section
+import Lean
 
 open Lean
 
@@ -19,7 +15,7 @@ instance : ToExpr FVarId where
   toExpr i := mkApp (.const ``FVarId.mk []) (toExpr i.name)
 
 open Level in
-def toExprLevel : Level → Expr
+private def toExprLevel : Level → Expr
   | zero       => .const ``zero []
   | succ l     => mkApp (.const ``succ []) (toExprLevel l)
   | .max l₁ l₂ => mkApp2 (.const ``Level.max []) (toExprLevel l₁) (toExprLevel l₂)
@@ -59,7 +55,7 @@ instance : ToExpr MData where
     e
 
 open Expr Literal in
-def toExprExpr : Expr → Expr
+private def toExprExpr : Expr → Expr
   | bvar n        => mkApp (.const ``bvar []) (mkNatLit n)
   | fvar n        => mkApp (.const ``fvar []) (toExpr n)
   | mvar n        => mkApp (.const ``mvar []) (toExpr n)

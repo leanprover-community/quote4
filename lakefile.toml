@@ -1,8 +1,5 @@
 name = "Qq"
 defaultTargets = ["Qq"]
 
-[leanOptions]
-experimental.module = true
-
 [[lean_lib]]
 name = "Qq"

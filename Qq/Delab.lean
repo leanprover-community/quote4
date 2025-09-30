@@ -1,9 +1,4 @@
-module
-
-public import Qq.Macro
-meta import Qq.Macro
-
-public section
+import Qq.Macro
 /-!
 # Delaborators for `q()` and `Q()` notation
 -/
@@ -21,25 +16,25 @@ register_option pp.qq : Bool := {
 }
 
 -- TODO: this probably exists in the library
-private meta def failureOnError (x : MetaM α) : DelabM α := do
+private def failureOnError (x : MetaM α) : DelabM α := do
   let y : MetaM (Option α) := do try return some (← x) catch _ => return none
   match ← y with
     | some a => return a
     | none => failure
 
-private meta def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
+private def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
   unquoteLCtx
   let newE ← unquoteExpr e
   return (newE, (← get).unquoted)
 
-meta def checkQqDelabOptions : DelabM Unit := do
+def checkQqDelabOptions : DelabM Unit := do
   unless ← getPPOption (·.getBool `pp.qq true) do failure
   if ← getPPOption getPPExplicit then failure
 
-meta instance : MonadLift UnquoteM (StateT UnquoteState DelabM) where
+instance : MonadLift UnquoteM (StateT UnquoteState DelabM) where
   monadLift k s := k s
 
-meta def delabQuoted : StateT UnquoteState DelabM Term := do
+def delabQuoted : StateT UnquoteState DelabM Term := do
   let e ← getExpr
   -- `(failure : DelabM _)` is of course completely different than `(failure : MetaM _)`...
   let some newE ← (try some <$> unquoteExpr e catch _ => failure : UnquoteM _) | failure
@@ -47,7 +42,7 @@ meta def delabQuoted : StateT UnquoteState DelabM Term := do
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
     withTheReader SubExpr (fun s => { s with expr := newE }) delab
 
-meta def withDelabQuoted (k : StateT UnquoteState DelabM Term) : Delab :=
+def withDelabQuoted (k : StateT UnquoteState DelabM Term) : Delab :=
   withIncRecDepth do
   StateT.run' (s := { mayPostpone := false }) <|
   show StateT UnquoteState DelabM Term from do
@@ -66,7 +61,7 @@ meta def withDelabQuoted (k : StateT UnquoteState DelabM Term) : Delab :=
       `(let $(mkIdent name) := $(← delab); $res)
   return res
 
-meta def delabQuotedLevel : DelabM Syntax.Level := do
+def delabQuotedLevel : DelabM Syntax.Level := do
   let e ← getExpr
   let (newE, _) ← failureOnError do
     StateT.run (s := { mayPostpone := false }) do
@@ -75,7 +70,7 @@ meta def delabQuotedLevel : DelabM Syntax.Level := do
   return newE.quote max_prec
 
 @[delab app.Qq.Quoted]
-meta def delabQ : Delab := do
+def delabQ : Delab := do
   guard $ (← getExpr).getAppNumArgs == 1
   checkQqDelabOptions
   withDelabQuoted do
@@ -83,7 +78,7 @@ meta def delabQ : Delab := do
   `(Q($stx))
 
 @[delab app.Qq.Quoted.unsafeMk]
-meta def delabq : Delab := do
+def delabq : Delab := do
   guard $ (← getExpr).getAppNumArgs == 2
   checkQqDelabOptions
   withDelabQuoted do
@@ -91,7 +86,7 @@ meta def delabq : Delab := do
   `(q($stx))
 
 @[delab app.Qq.QuotedDefEq]
-meta def delabQuotedDefEq : Delab := do
+def delabQuotedDefEq : Delab := do
   guard $ (← getExpr).getAppNumArgs == 4
   checkQqDelabOptions
   withDelabQuoted do
@@ -100,7 +95,7 @@ meta def delabQuotedDefEq : Delab := do
   `($lhs =Q $rhs)
 
 @[delab app.Qq.QuotedLevelDefEq]
-meta def delabQuotedLevelDefEq : Delab := do
+def delabQuotedLevelDefEq : Delab := do
   guard $ (← getExpr).getAppNumArgs == 2
   checkQqDelabOptions
   let lhs ← withAppFn do withAppArg delabQuotedLevel

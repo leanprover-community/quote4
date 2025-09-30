@@ -1,9 +1,7 @@
-module
-
-public import Qq.Macro
-public import Qq.Delab
-public import Qq.MetaM
-public import Qq.Simp
-public import Qq.Match
-public import Qq.AssertInstancesCommute
-public import Qq.Commands
+import Qq.Macro
+import Qq.Delab
+import Qq.MetaM
+import Qq.Simp
+import Qq.Match
+import Qq.AssertInstancesCommute
+import Qq.Commands
