@@ -14,10 +14,6 @@ instance : ToExpr LevelMVarId where
   toTypeExpr := .const ``LevelMVarId []
   toExpr i := mkApp (.const ``LevelMVarId.mk []) (toExpr i.name)
 
-instance : ToExpr FVarId where
-  toTypeExpr := .const ``FVarId []
-  toExpr i := mkApp (.const ``FVarId.mk []) (toExpr i.name)
-
 open Level in
 def toExprLevel : Level → Expr
   | zero       => .const ``zero []
@@ -28,12 +24,6 @@ def toExprLevel : Level → Expr
   | mvar n     => mkApp (.const ``mvar []) (toExpr n)
 
 instance : ToExpr Level := ⟨toExprLevel, .const ``Level []⟩
-
-instance : ToExpr Literal where
-  toTypeExpr := .const ``Literal []
-  toExpr lit := match lit with
-    | .natVal n => mkApp (.const ``Literal.natVal []) (toExpr n)
-    | .strVal s => mkApp (.const ``Literal.strVal []) (toExpr s)
 
 instance : ToExpr BinderInfo where
   toTypeExpr := .const ``BinderInfo []
