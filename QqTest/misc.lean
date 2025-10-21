@@ -19,11 +19,8 @@ example {α : Q(Type u)} (inst : Q(Inhabited $α)) : Q(∃ x : $α, x = x) :=
 -- TODO: investigate PANIC
 -- example : Q(let x := 5; x = x) := q(by simp)
 
-<<<<<<< HEAD:examples/misc.lean
-=======
 #guard_msgs(drop info, warning, error) in
 -- the following also panics if moved into an `example`
->>>>>>> nightly-testing:QqTest/misc.lean
 #eval show Q(∀ n : UInt64, n.toFin = n.toFin) from q(fun _ => by simp)
 
 def foo' (n : Nat) : Q(Q($($n) = $($n))) := q(q(by simp))
