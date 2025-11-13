@@ -511,7 +511,7 @@ meta def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α 
       if let some fvar ← isLevelFVar newLevelName then
         if refdLevels.contains newLevelName then
           addTermInfo' (← getRef) fvar
-      else if (← read).autoBoundImplicit then
+      else if (← read).autoBoundImplicitContext.isSome then
         throwAutoBoundImplicitLocal newLevelName
       else
         throwError "unbound level param {newLevelName}"
