@@ -91,7 +91,7 @@ meta def removeDollar : Name → Option Name
   | anonymous => none
   | str anonymous "$" => some anonymous
   | str anonymous s =>
-    if s.startsWith "$" then str anonymous (s.drop 1) else none
+    if s.startsWith "$" then str anonymous (s.drop 1).copy else none
   | str n s => (removeDollar n).map (str . s)
   | num n i => (removeDollar n).map (num . i)
 
@@ -100,8 +100,8 @@ meta def stripDollars : Name → Name
   | anonymous => anonymous
   | str n "$" => stripDollars n
   | str anonymous s =>
-    let s := s.dropWhile (· = '$')
-    if s = "" then anonymous else str anonymous s
+    let s := s.dropWhile '$'
+    if s.isEmpty then anonymous else str anonymous s.copy
   | str n s => str (stripDollars n) s
   | num n i => num (stripDollars n) i
 
