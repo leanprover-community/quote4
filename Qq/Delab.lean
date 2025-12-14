@@ -16,7 +16,6 @@ namespace Impl
 
 register_option pp.qq : Bool := {
   defValue := true
-  group    := "pp"
   descr    := "(pretty printer) print quotations as q(...) and Q(...)"
 }
 
