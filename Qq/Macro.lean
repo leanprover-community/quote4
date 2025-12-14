@@ -91,7 +91,7 @@ meta def removeDollar : Name → Option Name
   | anonymous => none
   | str anonymous "$" => some anonymous
   | str anonymous s =>
-    if s.startsWith "$" then str anonymous (s.drop 1) else none
+    if s.startsWith "$" then str anonymous (s.drop 1).copy else none
   | str n s => (removeDollar n).map (str . s)
   | num n i => (removeDollar n).map (num . i)
 
@@ -100,8 +100,8 @@ meta def stripDollars : Name → Name
   | anonymous => anonymous
   | str n "$" => stripDollars n
   | str anonymous s =>
-    let s := s.dropWhile (· = '$')
-    if s = "" then anonymous else str anonymous s
+    let s := s.dropWhile '$'
+    if s.isEmpty then anonymous else str anonymous s.copy
   | str n s => str (stripDollars n) s
   | num n i => num (stripDollars n) i
 
@@ -126,7 +126,7 @@ meta def isBad (e : Expr) : Bool := Id.run do
   return false
 
 -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/How.20to.20WHNF.20without.20exposing.20recursors.3F/near/249743042
-meta def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
+meta partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
   let e ← whnfCore e
   let e0 := if isBad e then e0 else e
   match ← unfoldDefinition? e with
@@ -172,7 +172,7 @@ meta partial def unquoteLevelMVar (mvar : Expr) : UnquoteM Level := do
 
 end
 
-meta def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
+meta partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
   let e ← whnf e
   if e.isAppOfArity ``List.nil 1 then
     pure []
@@ -217,7 +217,7 @@ meta def makeDefEq (a b : Expr) : MetaM (Option LocalContext) := do
 
 mutual
 
-meta def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
+meta partial def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
   let e ← whnf e
   if e.isAppOfArity ``List.nil 1 then
     pure []
@@ -226,7 +226,7 @@ meta def unquoteExprList (e : Expr) : UnquoteM (List Expr) := do
   else
     throwFailedToEval e
 
-meta def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
+meta partial def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   let ty ← instantiateMVars (← whnfR (← inferType mvar))
   unless ty.isAppOf ``Quoted do throwError "not of type Q(_):{indentExpr ty}"
   have et := ty.getArg! 0
@@ -239,7 +239,7 @@ meta def unquoteExprMVar (mvar : Expr) : UnquoteM Expr := do
   }
   return newMVar
 
-meta def unquoteExpr (e : Expr) : UnquoteM Expr := do
+meta partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
   if e.isAppOfArity ``Quoted.unsafeMk 2 then return ← unquoteExpr (e.getArg! 1)
   if e.isAppOfArity ``toExpr 3 then return e.getArg! 2
   let e ← instantiateMVars (← whnf e)
@@ -388,7 +388,7 @@ meta def quoteLevelList : List Level → QuoteM Expr
     return mkApp3 (.const ``List.cons [.zero]) (.const ``Level [])
       (← quoteLevel l) (← quoteLevelList ls)
 
-meta def quoteExpr : Expr → QuoteM Expr
+meta partial def quoteExpr : Expr → QuoteM Expr
   | .bvar i => return mkApp (.const ``Expr.bvar []) (toExpr i)
   | e@(.fvar ..) => do
     let some r := (← read).exprBackSubst[e]? | throwError "unknown free variable {e}"
@@ -511,7 +511,7 @@ meta def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α 
       if let some fvar ← isLevelFVar newLevelName then
         if refdLevels.contains newLevelName then
           addTermInfo' (← getRef) fvar
-      else if (← read).autoBoundImplicit then
+      else if (← read).autoBoundImplicitContext.isSome then
         throwAutoBoundImplicitLocal newLevelName
       else
         throwError "unbound level param {newLevelName}"
@@ -613,7 +613,7 @@ support `Q($(foo) ∨ False)`
 private meta def push [Monad m] (i t l : Syntax) : StateT (Array $ Syntax × Syntax × Syntax) m Unit :=
   modify fun s => s.push (i, t, l)
 
-meta def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax) :
+meta partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax) :
     StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
   if stx.isAntiquot && !stx.isEscapedAntiquot then
     withFreshMacroScope do
@@ -625,7 +625,7 @@ meta def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax) :
     | stx => return stx
 
 open TSyntax.Compat in
-meta def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
+meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
   | `(Q($x)) => do `(Q($(← floatExprAntiquot' (depth + 1) x)))
   | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
