@@ -32,8 +32,14 @@ def trySynthInstanceQ (α : Q(Sort u)) : MetaM (LOption Q($α)) := do
 def synthInstanceQ (α : Q(Sort u)) : MetaM Q($α) := do
   synthInstance α
 
-def instantiateMVarsQ {α : Q(Sort u)} (e : Q($α)) : MetaM Q($α) := do
-  instantiateMVars e
+/-- `Lean.instantiateMVars`, with the guarantee that the result is defeq to the original. -/
+def instantiateMVarsQ {α : Q(Sort u)} (e : Q($α)) : MetaM ((e' : Q($α)) ×' $e' =Q $e) :=
+  return ⟨← instantiateMVars e, ⟨⟩⟩
+
+set_option linter.unusedVariables false in
+/-- `Lean.instantiateLevelMVars`, with the guarantee that the result is defeq to the original. -/
+def instantiateLevelMVarsQ (u : Level) : MetaM ((u' : Level) ×' u' =QL u) :=
+  return ⟨← instantiateLevelMVars u, ⟨⟩⟩
 
 def elabTermEnsuringTypeQ (stx : Syntax) (expectedType : Q(Sort u))
     (catchExPostpone := true) (implicitLambda := true) (errorMsgHeader? : Option String := none) :
