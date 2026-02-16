@@ -631,6 +631,7 @@ meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
   | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot' term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot' term))
+  | `($n:ident.{$us,*}) => do `($n.{$(← us.getElems.mapM floatLevelAntiquot'),*})
   | stx => do
     if let (some (kind, _pseudo), false) := (stx.antiquotKind?, stx.isEscapedAntiquot) then
       let term := stx.getAntiquotTerm

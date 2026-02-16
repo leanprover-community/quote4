@@ -371,6 +371,7 @@ private partial def floatExprAntiquot (depth : Nat) : Term → StateT (Array (TS
   | `(q($x)) => do `(q($(← floatExprAntiquot (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot term))
+  | `($n:ident.{$us,*}) => do `($n.{$(← us.getElems.mapM floatLevelAntiquot),*})
   | stx => do
     if stx.1.isAntiquot && !stx.1.isEscapedAntiquot then
       let term : Term := ⟨stx.1.getAntiquotTerm⟩
