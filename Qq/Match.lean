@@ -259,9 +259,10 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
     return Quoted.unsafeMk (← elabTerm body expectedType)
 
-scoped syntax "_qq_match" term " := " term " | " doSeq : term
+scoped syntax "_qq_match" term " := " term " | " doSeqIndent : term
 macro_rules
-  | `(assert! (_qq_match $pat := $e | $alt); $x) => `(_qq_match $pat ← $e | (do $alt) in $x)
+  | `(assert! (_qq_match $pat := $e | $alt); $x) =>
+    `(_qq_match $pat ← $e | (do $alt:doSeqIndent) in $x)
 
 partial def isIrrefutablePattern : Term → Bool
   | `(($stx)) => isIrrefutablePattern stx
@@ -279,17 +280,9 @@ scoped elab "_comefrom" n:ident "do" b:doSeq " in " body:term : term <= expected
 scoped syntax "_comefrom" ident "do" doSeq : term
 macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b in $body)
 
+-- The point of this macro as SG sees it is to get the do block result type to push it into `$b`
 scoped macro "comefrom" n:ident "do" b:doSeq : doElem =>
   `(doElem| assert! (_comefrom $n do $b))
-
-def mkLetDoSeqItem [Monad m] [MonadQuotation m] (pat : Term) (rhs : TSyntax `term) (alt : TSyntax ``doSeq) : m (List (TSyntax ``doSeqItem)) := do
-  match pat with
-    | `(_) => return []
-    | _ =>
-      if isIrrefutablePattern pat then
-        return [← `(doSeqItem| let $pat:term := $rhs)]
-      else
-        return [← `(doSeqItem| let $pat:term := $rhs | $alt)]
 
 end Impl
 
@@ -336,7 +329,7 @@ partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($_)) => true
   | stx => stx.getArgs.any hasQMatch
 
-partial def Impl.floatQMatch (alt : TSyntax ``doSeq) : Term → StateT (List (TSyntax ``doSeqItem)) MacroM Term
+partial def Impl.floatQMatch (alt : TSyntax ``doSeqIndent) : Term → StateT (List (TSyntax ``doSeqItem)) MacroM Term
   | `(~q($term)) =>
     withFreshMacroScope do
       let auxDoElem ← `(doSeqItem| let ~q($term) := x | $alt)
@@ -397,25 +390,43 @@ macro_rules
     if !hasQMatch pat then Macro.throwUnsupported
     Macro.throwError "let-bindings with ~q(.) require an explicit alternative"
 
-  | `(doElem| let $pat:term := $rhs:term | $alt:doSeq) => do
+  | `(doElem| let $pat:term := $rhs:term | $alt $(body?)?) => do
     if !hasQMatch pat then Macro.throwUnsupported
     match pat with
       | `(~q($pat)) =>
         let (pat, lifts) ← floatExprAntiquot 0 pat #[]
-        let t ← `(doSeqItem| do assert! (_qq_match $pat := $rhs | $alt))
-        `(doElem| do $(lifts.push t):doSeqItem*)
+        let t ← `(doSeqItem| assert! (_qq_match $pat := $rhs | $alt))
+        let mut items := lifts.push t
+        if let some body := body? then
+          items := items.push (← `(doSeqItem| do $body:doSeqIndent))
+        `(doElem| do $items:doSeqItem*)
 
       | _ =>
-        let (pat', auxs) ← floatQMatch (← `(doSeq| __alt)) pat []
-        let items :=
-          #[← `(doSeqItem| comefrom __alt do $alt:doSeq)] ++
-          (← mkLetDoSeqItem pat' rhs alt) ++
-          auxs
-        `(doElem| do $items:doSeqItem*)
+        let (pat', auxs) ← floatQMatch (← `(doSeqIndent| __alt)) pat []
+        -- Build the nested body from inside out, so that every `doLetElse` always has a body.
+        -- This is necessary because the do elaborator defaults body to `pure PUnit.unit`
+        -- when no body is provided, causing type mismatches.
+        let body ← match body? with
+          | some body => `(doElem| do $body:doSeqIndent)
+          | none => `(doElem| pure PUnit.unit)
+        let mut body := body
+        for aux in auxs.reverse do
+          body ← `(doElem| do $aux:doSeqItem
+                                   $body:doElem)
+        let outerRhs ← match pat' with
+        | `(_) => pure body
+        | _ =>
+          if isIrrefutablePattern pat' then
+            `(doElem| do let $pat':term := $rhs; $body:doElem)
+          else
+            `(doElem| let $pat':term := $rhs | __alt -- line break to break up application
+                      $body:doElem)
+        `(doElem| do comefrom __alt do $alt:doSeqIndent
+                     $outerRhs:doElem)
 
   | `(match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
     if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
-    `(do match $[$gen]? $[$discrs:term],* with $[| $[$patss:term],* => $rhss:term]*)
+    `(do match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss:term],* => $rhss:term]*)
 
   | `(doElem| match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
     if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
@@ -429,11 +440,14 @@ macro_rules
     let mut items := #[]
     items := items.push (← `(doSeqItem| comefrom __alt do throwError "nonexhaustive match"))
     for pats in patss.reverse, rhs in rhss.reverse do
-      let mut subItems : Array (TSyntax ``doSeqItem) := #[]
-      for discr in discrs, pat in pats do
-        subItems := subItems ++ (← mkLetDoSeqItem pat discr (← `(doSeq| __alt)))
-      subItems := subItems.push (← `(doSeqItem| do $rhs))
-      items := items.push (← `(doSeqItem| comefrom __alt do $subItems:doSeqItem*))
+      let mut rhs ← `(doElem| do $rhs)
+      for discr in discrs.reverse, pat in pats.reverse do
+        if isIrrefutablePattern pat then
+          rhs ← `(doElem| do let $pat:term := $discr; $rhs:doElem)
+        else
+          rhs ← `(doElem| let $pat:term := $discr | __alt -- line break to break up application
+                           $rhs:doElem)
+      items := items.push (← `(doSeqItem| comefrom __alt do $rhs:doElem))
     items := items.push (← `(doSeqItem| __alt))
     `(doElem| (do $items:doSeqItem*))
 
