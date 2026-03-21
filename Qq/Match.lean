@@ -1,9 +1,7 @@
 module
 
-public import Qq.Macro
-public import Qq.MetaM
-public import Qq.ForLean.Do
-public import Qq.SortLocalDecls
+public meta import Qq.ForLean.Do
+public meta import Qq.SortLocalDecls
 public meta import Qq.MatchImpl
 
 public meta section

@@ -1,6 +1,6 @@
 module
 
-public import Lean
+public import Lean.Meta.Check
 
 public section
 open Lean
