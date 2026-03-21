@@ -1,7 +1,7 @@
 module
 
 public import Qq.Macro
-meta import Qq.Macro
+public import Qq.Typ
 
 public section
 /-!
