@@ -71,7 +71,7 @@ meta def delabQuotedLevel : DelabM Syntax.Level := do
     StateT.run (s := { mayPostpone := false }) do
       unquoteLevelLCtx (addDefEqs := false)
       unquoteLevel e
-  return newE.quote max_prec
+  delabLevel newE max_prec
 
 @[delab app.Qq.Quoted]
 meta def delabQ : Delab := do
