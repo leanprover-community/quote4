@@ -18,4 +18,4 @@ info: ((Expr.const `Inhabited.default [Level.zero.succ]).app (Expr.const `Nat []
 open Lean in
 #eval show MetaM Q(Nat) from do
   let _ ← synthInstanceQ q(Inhabited Nat)
-  return typeClassArgument (u := levelOne) q(Nat) q(inferInstance)
+  return typeClassArgument (u := Level.one) q(Nat) q(inferInstance)
