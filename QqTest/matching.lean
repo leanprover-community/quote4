@@ -19,6 +19,7 @@ abbrev double (a : Nat) := a + a
 info: false
 ---
 trace: x : Q(Nat) := q(k + m)
+x✝¹ : Q(Nat) := x
 a b : Q(Nat)
 match_eq✝ : (k + m) =Q «$a».add «$b»
 ⊢ Bool
