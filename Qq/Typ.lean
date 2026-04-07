@@ -14,7 +14,7 @@ namespace Qq
 
 You should usually write this using the notation `Q($α)`.
 -/
-@[expose] def Quoted (α : Expr) := Expr
+@[expose, implicit_reducible] def Quoted (α : Expr) := Expr
 
 /--
 Creates a quoted expression.  Requires that `e` has type `α`.
@@ -23,15 +23,17 @@ You should usually write this using the notation `q($e)`.
 -/
 @[expose] protected def Quoted.unsafeMk (e : Expr) : Quoted α := e
 
+@[expose] protected def Quoted.toExpr (e : Quoted α) : Expr := e
+
 instance : BEq (Quoted α) := inferInstanceAs (BEq Expr)
 instance : Hashable (Quoted α) := inferInstanceAs (Hashable Expr)
 instance : Inhabited (Quoted α) := inferInstanceAs (Inhabited Expr)
 instance : ToString (Quoted α) := inferInstanceAs (ToString Expr)
 instance : Repr (Quoted α) := inferInstanceAs (Repr Expr)
 
-instance : CoeOut (Quoted α) Expr where coe e := e
-instance : CoeOut (Quoted α) MessageData where coe := .ofExpr
-instance : ToMessageData (Quoted α) where toMessageData := .ofExpr
+instance : CoeOut (Quoted α) Expr where coe e := e.toExpr
+instance : CoeOut (Quoted α) MessageData where coe e := .ofExpr e.toExpr
+instance : ToMessageData (Quoted α) where toMessageData e := .ofExpr e.toExpr
 
 /-- Gets the type of a quoted expression.  -/
 protected abbrev Quoted.ty (t : Quoted α) : Expr := α
