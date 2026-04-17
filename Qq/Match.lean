@@ -259,11 +259,6 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
     return Quoted.unsafeMk (← elabTerm body expectedType)
 
-scoped syntax "_qq_match" term " := " term " | " doSeqIndent : term
-macro_rules
-  | `(assert! (_qq_match $pat := $e | $alt); $x) =>
-    `(_qq_match $pat ← $e | (do $alt:doSeqIndent) in $x)
-
 partial def isIrrefutablePattern : Term → Bool
   | `(($stx)) => isIrrefutablePattern stx
   | `(⟨$args,*⟩) => args.getElems.all isIrrefutablePattern
@@ -272,17 +267,12 @@ partial def isIrrefutablePattern : Term → Bool
   | `(true) => false | `(false) => false -- TODO properly
   | stx => stx.1.isIdent
 
-scoped elab "_comefrom" n:ident "do" b:doSeq " in " body:term : term <= expectedType => do
+
+/-- `have` with type annotation from `expectedType` — resolves polymorphism in `$v`. -/
+scoped elab "__qq_have" n:ident " := " v:term " ; " body:term : term <= expectedType => do
   let _ ← extractBind expectedType
   let ty ← exprToSyntax expectedType
-  elabTerm (← `(have $n:ident : $ty := (do $b:doSeq); $body)) expectedType
-
-scoped syntax "_comefrom" ident "do" doSeq : term
-macro_rules | `(assert! (_comefrom $n do $b); $body) => `(_comefrom $n do $b in $body)
-
--- The point of this macro as SG sees it is to get the do block result type to push it into `$b`
-scoped macro "comefrom" n:ident "do" b:doSeq : doElem =>
-  `(doElem| assert! (_comefrom $n do $b))
+  elabTerm (← `(have $n:ident : $ty := $v; $body)) expectedType
 
 end Impl
 
@@ -393,8 +383,35 @@ private partial def floatExprAntiquot (depth : Nat) : Term → StateT (Array Lif
 private def liftsToTermLet (lifts : Array Lift) (body : Term) : MacroM Term :=
   lifts.foldrM (init := body) fun (n, ty, val) body => `(let $n : $ty := $val; $body)
 
-private def liftsToDoItems (lifts : Array Lift) : MacroM (Array (TSyntax ``doSeqItem)) :=
-  lifts.mapM fun (n, ty, val) => `(doSeqItem| let $n : $ty := $val)
+open Lean.Elab.Do in
+/--
+Handle `let ~q(pat) := rhs | alt` as a do element: elaborate the captured body
+(and any rest-of-outer-do) as a term using `doElabToSyntax`, then splice it into
+`_qq_match pat ← rhs | (do alt) in <body>`. This preserves outer `let mut`
+access and control-flow continuity, without the previous `assert! (_qq_match ..)`
+term-rewrite trick.
+
+Non-top-level `~q(..)` patterns (e.g. `⟨~q(a), b⟩`) fall through to the
+macro-based expansion below; they do not preserve outer `let mut` / control flow.
+-/
+@[scoped doElem_elab Lean.Parser.Term.doLetElse]
+def elabQqDoLetElse : DoElab := fun stx dec => do
+  let `(doLetElse|
+    let $[mut%$_mutTk?]? $_cfg:letConfig $pat:term := $rhs | $alt $(body?)?) := stx
+    | throwUnsupportedSyntax
+  unless pat.raw.isOfKind ``Qq.matcher do throwUnsupportedSyntax
+  let qpat : Term := ⟨pat.raw[1]⟩
+  let (qpat, lifts) ← liftMacroM <| (floatExprAntiquot 0 qpat).run #[]
+  let mγ ← mkMonadicType (← read).doBlockResultType
+  let elabCont : DoElabM Lean.Expr :=
+    match body? with
+    | some body => elabDoSeq ⟨body⟩ dec
+    | none => dec.continueWithUnit
+  doElabToSyntax "let ~q(..) body" elabCont fun bodyTerm => do
+    let term ← liftMacroM <|
+      liftsToTermLet lifts
+        (← `(_qq_match $qpat ← $rhs | (do $alt:doSeqIndent) in $bodyTerm))
+    Term.elabTerm term mγ
 
 private def buildPatternTerm (discr : Term) (pat : Term) (body : Term) : MacroM Term := do
   if isIrrefutablePattern pat then
@@ -417,28 +434,16 @@ macro_rules
     if !hasQMatch pat then Macro.throwUnsupported
     Macro.throwError "let-bindings with ~q(.) require an explicit alternative"
 
+  -- Complex patterns with nested `~q(..)` (e.g. `⟨~q(a), b⟩`) are desugared at the
+  -- macro level; the top-level `~q(..)` case is handled by `elabQqDoLetElse` above.
   | `(doElem| let $pat:term := $rhs:term | $alt $(body?)?) => do
     if !hasQMatch pat then Macro.throwUnsupported
-    match pat with
-      | `(~q($pat)) =>
-        -- Route directly to `_qq_match pat := rhs | alt` so the rest of the enclosing do
-        -- is spliced into the match body via the `assert! (_qq_match ..); $rest` rule.
-        -- This preserves outer `let mut` access and control-flow continuity for the
-        -- common `let ~q(..) := .. | alt` form.
-        let (pat, lifts) ← floatExprAntiquot 0 pat #[]
-        let t ← `(doSeqItem| assert! (_qq_match $pat := $rhs | $alt))
-        let mut items := (← liftsToDoItems lifts).push t
-        if let some body := body? then
-          items := items.push (← `(doSeqItem| do $body:doSeqIndent))
-        `(doElem| do $items:doSeqItem*)
-
-      | _ =>
-        let body ← match body? with
-          | some body => `(do $body:doSeqIndent)
-          | none => `(pure PUnit.unit)
-        let body ← buildPatternTerm rhs pat body
-        `(doElem| do comefrom __alt do $alt:doSeqIndent
-                     ($body))
+    if pat.raw.isOfKind ``Qq.matcher then Macro.throwUnsupported
+    let body ← match body? with
+      | some body => `(do $body:doSeqIndent)
+      | none => `(pure PUnit.unit)
+    let body ← buildPatternTerm rhs pat body
+    `(doElem| (__qq_have __alt := (do $alt:doSeqIndent); $body))
 
   | `(match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
     if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
@@ -446,21 +451,18 @@ macro_rules
 
   | `(doElem| match $[$gen:generalizingParam]? $[$discrs:term],* with $[| $[$patss],* => $rhss]*) => do
     if !patss.any (·.any (hasQMatch ·)) then Macro.throwUnsupported
-
-    -- only `generalizing := true` (the default) is supported
     if let some stx := gen then
       match stx with
       | `(generalizingParam| (generalizing := true)) => pure ()
       | _ => Macro.throwErrorAt stx "not supported in ~q matching"
-
-    let mut items := #[]
-    items := items.push (← `(doSeqItem| comefrom __alt do throwError "nonexhaustive match"))
-    for pats in patss.reverse, rhs in rhss.reverse do
+    -- Build nested `__qq_have __alt := body_i; ...` terms from last arm to first.
+    let mut term : Term ← `(__alt)
+    for pats in patss, rhs in rhss do
       let mut body ← `(do $rhs)
       for discr in discrs.reverse, pat in pats.reverse do
         body ← buildPatternTerm discr pat body
-      items := items.push (← `(doSeqItem| comefrom __alt do ($body)))
-    items := items.push (← `(doSeqItem| __alt))
-    `(doElem| (do $items:doSeqItem*))
+      term ← `(__qq_have __alt := $body; $term)
+    term ← `(__qq_have __alt := (do throwError "nonexhaustive match"); $term)
+    `(doElem| ($term))
 
 end
