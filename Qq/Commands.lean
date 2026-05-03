@@ -1,7 +1,7 @@
 module
 
 public import Qq.Macro
-public import Lean.Meta.Eval
+public meta import Lean.Meta.Eval
 
 public section
 /-!
