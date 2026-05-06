@@ -1,8 +1,8 @@
 module
 
-public import Qq.Macro
 public import Qq.Delab
-import Qq.Typ
+import Lean.Meta.SynthInstance
+import Lean.Elab.Term.TermElabM
 
 public section
 
