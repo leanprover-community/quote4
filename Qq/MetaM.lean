@@ -39,6 +39,26 @@ def synthInstanceQ (α : Q(Sort u)) : MetaM Q($α) := do
 def instantiateMVarsQ {α : Q(Sort u)} (e : Q($α)) : MetaM { e' : Q($α) // $e =Q $e' } :=
   return ⟨← instantiateMVars e, ⟨⟩⟩
 
+/-- See `whnf`. Returns a definitional equality assumption. -/
+def whnfQ {α : Q(Sort u)} (e : Q($α)) : MetaM { e' : Q($α) // $e =Q $e' } :=
+  return ⟨← whnf e, ⟨⟩⟩
+
+/-- `whnfQ` with reducible transparency. Returns a definitional equality assumption. -/
+def whnfRQ {α : Q(Sort u)} (e : Q($α)) : MetaM { e' : Q($α) // $e =Q $e' } :=
+  return ⟨← whnfR e, ⟨⟩⟩
+
+/-- `whnfQ` with default transparency. Returns a definitional equality assumption. -/
+def whnfDQ {α : Q(Sort u)} (e : Q($α)) : MetaM { e' : Q($α) // $e =Q $e' } :=
+  return ⟨← whnfD e, ⟨⟩⟩
+
+/-- `whnfQ` with instances transparency. Returns a definitional equality assumption. -/
+def whnfIQ {α : Q(Sort u)} (e : Q($α)) : MetaM { e' : Q($α) // $e =Q $e' } :=
+  return ⟨← whnfD e, ⟨⟩⟩
+
+/-- `whnfQ` with at most instances transparency. Returns a definitional equality assumption. -/
+def whnfAtMostIQ {α : Q(Sort u)} (e : Q($α)) : MetaM { e' : Q($α) // $e =Q $e' } :=
+  return ⟨← whnfAtMostI e, ⟨⟩⟩
+
 def elabTermEnsuringTypeQ (stx : Syntax) (expectedType : Q(Sort u))
     (catchExPostpone := true) (implicitLambda := true) (errorMsgHeader? : Option String := none) :
     TermElabM Q($expectedType) := do
