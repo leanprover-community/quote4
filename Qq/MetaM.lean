@@ -116,3 +116,13 @@ def assertLevelDefEqQ (u v : Level) : MetaM (PLift (QuotedLevelDefEq u v)) := do
   match ← isLevelDefEqQ u v with
   | .defEq witness => return ⟨witness⟩
   | .notDefEq => throwError "{u} and {v} are not definitionally equal"
+
+set_option linter.unusedVariables false in
+def instantiateLevelsMVarsQ (u : Level) : MetaM { u' : Level // u =QL u' } :=
+  return ⟨← instantiateLevelMVars u, ⟨⟩⟩
+
+set_option linter.unusedVariables false in
+/-- Instantiate assigned universe metavariables in `u`, and then normalize it. -/
+def normalizeLevelQ (u : Level) : MetaM { u' : Level // u =QL u' } := do
+  let u ← instantiateLevelMVars u
+  pure ⟨u.normalize, ⟨⟩⟩
