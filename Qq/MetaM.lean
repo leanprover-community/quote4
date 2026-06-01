@@ -35,8 +35,9 @@ def trySynthInstanceQ (α : Q(Sort u)) : MetaM (LOption Q($α)) := do
 def synthInstanceQ (α : Q(Sort u)) : MetaM Q($α) := do
   synthInstance α
 
-def instantiateMVarsQ {α : Q(Sort u)} (e : Q($α)) : MetaM Q($α) := do
-  instantiateMVars e
+/-- See `instantiateMVars`. Returns a definitional equality assumption. -/
+def instantiateMVarsQ {α : Q(Sort u)} (e : Q($α)) : MetaM { e' : Q($α) // $e =Q $e' } :=
+  return ⟨← instantiateMVars e, ⟨⟩⟩
 
 def elabTermEnsuringTypeQ (stx : Syntax) (expectedType : Q(Sort u))
     (catchExPostpone := true) (implicitLambda := true) (errorMsgHeader? : Option String := none) :
