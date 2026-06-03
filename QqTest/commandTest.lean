@@ -42,7 +42,7 @@ def f₂ (_x : Int) := by_elabq
 trace: a b : Q(Nat)
 _h : Q(«$a» = «$b»)
 p : Q(Prop) := q(«$a» = «$b»)
-⊢ TacticM PUnit
+⊢ TacticM Unit
 -/
 #guard_msgs in
 example (a b : Nat) (_h : a = b) : True := by
@@ -82,7 +82,7 @@ h : Q(«$f₀» («$f₁» «$b») = «$b»)
 f₂ : Q(«$β» → «$β»)
 f₂_eq✝ : «$f₂» =Q «$f₀» ∘ «$f₁»
 goal : Q(«$b» = «$f₂» «$b»)
-⊢ TacticM PUnit
+⊢ TacticM Unit
 -/
 #guard_msgs in
 example {α : Type u} {β : Type v} (f₀ : α → β) (f₁ : β → α)
