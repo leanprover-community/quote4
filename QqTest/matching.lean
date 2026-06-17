@@ -94,3 +94,32 @@ def pairLit' (u : Lean.Level) (α : Q(Type u)) (a : Q($α)) : MetaM Q($α × $α
   | _, _, _ => failure
 
 #eval show MetaM Unit from do guard <| (←pairLit' _ _ q(2)) == q((2, 2))
+
+section RegressionLetMVar
+
+inductive Result' : Type | isInst (inst : Expr) | other
+deriving Inhabited
+
+def Result {α : Q(Type u)} (_x : Q($α)) : Type := Result'
+
+@[match_pattern, inline] def Result.isInst {α : Q(Type u)} {x : Q($α)} :
+    ∀ (_inst : Q(Inhabited $α) := by assumption), Result x :=
+  Result'.isInst
+
+def derive {α : Q(Type u)} (_e : Q($α)) : MetaM (Result _e) := pure .other
+
+def DummyP (_α : Type) (_x : Int) : Prop := True
+
+-- IsSquare-style `match ← derive a with | .ctor _ => use | _ => …` inside a
+-- whole-pattern `~q(...)` outer match.
+def regressionLetMVar {u : Level} {αP : Q(Type u)} (e : Q($αP)) : MetaM Unit := do
+  match u, αP, e with
+  | 0, ~q(Prop), ~q(@DummyP Int $a) => do
+    match ← derive a with
+    | .isInst sa =>
+      let _ : Q(Inhabited Int) := q(($sa : Inhabited Int))
+      pure ()
+    | _ => failure
+  | _ => failure
+
+end RegressionLetMVar
