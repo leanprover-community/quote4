@@ -20,6 +20,7 @@ register_option pp.qq : Bool := {
 }
 
 -- TODO: this probably exists in the library
+@[inline]
 private meta def failureOnError {m : Type u → Type v} {n : Type u → Type w}
     [Monad n] [MonadLiftT m n] [Alternative m] [Alternative n] (x : m α) : n α := do
   (← liftM (optional x)).getDM failure
@@ -33,7 +34,6 @@ meta instance : MonadLift UnquoteM (StateT UnquoteState DelabM) where
 
 meta def delabQuoted : StateT UnquoteState DelabM Term := do
   let e ← getExpr
-  -- `(failure : DelabM _)` is of course completely different than `(failure : MetaM _)`...
   let newE ← failureOnError (unquoteExpr e)
   let newLCtx := (← get).unquoted
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
