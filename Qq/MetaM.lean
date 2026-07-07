@@ -1,8 +1,8 @@
 module
 
-public import Qq.Macro
 public import Qq.Delab
-import Qq.Typ
+import Lean.Meta.SynthInstance
+import Lean.Elab.Term.TermElabM
 
 public section
 
@@ -25,6 +25,9 @@ def withLocalDeclDQ [Monad n] [MonadControlT MetaM n] (name : Name) (β : Q(Sort
 
 def withLocalDeclQ [Monad n] [MonadControlT MetaM n] (name : Name) (bi : BinderInfo) (β : Q(Sort u)) (k : Q($β) → n α) : n α :=
   withLocalDecl name bi β k
+
+def synthInstanceQ? (α : Q(Sort u)) : MetaM (Option Q($α)) := do
+  synthInstance? α
 
 def trySynthInstanceQ (α : Q(Sort u)) : MetaM (LOption Q($α)) := do
   trySynthInstance α

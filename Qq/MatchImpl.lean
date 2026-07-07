@@ -1,10 +1,6 @@
 module
 
-public import Qq.Macro
 public import Qq.MetaM
-public import Qq.ForLean.Do
-public import Qq.SortLocalDecls
-import Qq.Typ
 
 public section
 

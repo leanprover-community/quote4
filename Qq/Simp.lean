@@ -1,6 +1,7 @@
 module
 
 public import Qq.MetaM
+public import Lean.Meta.Tactic.Simp.Types
 
 public section
 
