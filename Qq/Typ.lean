@@ -14,7 +14,7 @@ namespace Qq
 
 You should usually write this using the notation `Q($α)`.
 -/
-@[expose] def Quoted (α : Expr) := Expr
+@[expose, implicit_reducible] def Quoted (α : Expr) := Expr
 
 /--
 Creates a quoted expression.  Requires that `e` has type `α`.
