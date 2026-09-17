@@ -268,6 +268,7 @@ partial def isIrrefutablePattern : Term → Bool
   | `(($a, $b)) => isIrrefutablePattern a && isIrrefutablePattern b
   | `(_) => true
   | `(true) => false | `(false) => false -- TODO properly
+  | `(none) => false -- nullary Option ctor is refutable, like Bool
   | stx => stx.1.isIdent
 
 scoped elab "_comefrom" n:ident "do" b:doSeq " in " body:term : term <= expectedType => do
