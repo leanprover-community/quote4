@@ -657,7 +657,7 @@ open TSyntax.Compat in
 meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
   | `(Q($x)) => do `(Q($(← floatExprAntiquot' (depth + 1) x)))
-  | `(q($x)) => do `(q($(← floatExprAntiquot' (depth - 0) x)))
+  | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot' term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot' term))
   | stx => do
