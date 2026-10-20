@@ -386,12 +386,12 @@ meta def unquoteLCtx : UnquoteM Unit := do
 
 meta def isLevelFVar (n : Name) : MetaM (Option Expr) := do
   match (← getLCtx).findFromUserName? n with
-  | none => pure none
-  | some decl =>
-    return if ← isDefEq decl.type (.const ``Level []) then
-      some decl.toExpr
-    else
-      none
+    | none => pure none
+    | some decl =>
+      return if ← isDefEq decl.type (.const ``Level []) then
+        some decl.toExpr
+      else
+        none
 
 meta def quoteLevel : Level → QuoteM Expr
   | .zero => return .const ``Level.zero []
@@ -657,7 +657,7 @@ open TSyntax.Compat in
 meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
   | `(Q($x)) => do `(Q($(← floatExprAntiquot' (depth + 1) x)))
-  | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
+  | `(q($x)) => do `(q($(← floatExprAntiquot' (depth - 0) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot' term))
   | `(Sort $term) => do `(Sort $(← floatLevelAntiquot' term))
   | stx => do
