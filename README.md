@@ -69,7 +69,7 @@ set_option trace.compiler.ir.result true in
 -- `autoBoundImplicitLocal`.
 
 def betterApp {α : Q(Sort u)} {β : Q($α → Sort v)}
-  (f : Q((a : α) → $β a)) (a : Q($α)) : Q($β $a) :=
+  (f : Q((a : $α) → $β a)) (a : Q($α)) : Q($β $a) :=
 q($f $a)
 
 #eval betterApp q(Int.toNat) q(42)
@@ -103,7 +103,7 @@ now contains both the type and the universe level).
 
 The arguments do not need to refer
 to concrete types like `Int` either:
-`List ((u : Level) × (α : Q(Sort u)) × List Q(Option $α))`
+`List ((u : Level) × (α : Q(Type u)) × List Q(Option $α))`
 does what you think it does!
 
 In fact it is a crucial feature
