@@ -103,7 +103,7 @@ now contains both the type and the universe level).
 
 The arguments do not need to refer
 to concrete types like `Int` either:
-`List ((u : Level) × (α : Q(Sort u)) × List Q(Option $α))`
+`List ((u : Level) × (α : Q(Type u)) × List Q(Option $α))`
 does what you think it does!
 
 In fact it is a crucial feature
