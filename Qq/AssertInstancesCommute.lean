@@ -24,6 +24,16 @@ meta def findRedundantLocalInst? : QuoteM (Option (FVarId × Expr)) := do
     if let some (.quoted (.fvar quotedFVar)) := (← read).exprBackSubst[fvar]? then
       if (← quotedFVar.getDecl).hasValue then continue
       if let some result ← withUnquotedLCtx do isRedundantLocalInst? fvar.fvarId! then
+        -- `result` lives in the unquoted context. If it is a local variable whose quoted
+        -- counterpart is let-bound (e.g. introduced by `let := x` in a `do` block), it
+        -- cannot serve as the canonical instance: quoting it back yields a let variable
+        -- that `whnf` unfolds during the next unquoting round, so the generated
+        -- `QuotedDefEq` hypothesis degenerates (to `x = x`), the zeta-reduction that
+        -- would eliminate `fvar` never happens, and `assertInstancesCommute` keeps
+        -- "rediscovering" the same instance until the recursion depth is exceeded (#38).
+        if let .fvar _ := result then
+          if let some (.quoted (.fvar quotedResult)) := (← read).exprBackSubst[result]? then
+            if (← quotedResult.getDecl).hasValue then continue
         return (fvar.fvarId!, result)
   return none
 
