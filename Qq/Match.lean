@@ -33,7 +33,7 @@ instance, as this is what is being used to elaborate the `+`.
 If the intent is to match an _arbitrary_ `Add α` instance in `x`,
 then you must match this with a `$inst` antiquotation:
 ```
-def isAdd {u : Level} {α : Q(Type u)} (x : Q($α)) : MetaM (Option (Q($α) × Q($α))) := do
+def isAdd {u : Level} {α : Q(Type u)} (x : Q($α)) : MetaM (Option (Q(Add $α) × Q($α) × Q($α))) := do
   match x with
   | ~q(@HAdd.hAdd _ _ _ (@instHAdd _ $inst) $a $b) => return some (inst, a, b)
   | _ => return none
@@ -277,7 +277,7 @@ partial def isIrrefutablePattern : Term → Bool
 
 scoped elab "_comefrom" n:ident "do" b:doSeq " in " body:term : term <= expectedType => do
   let _ ← extractBind expectedType
-  let ty ← exprToSyntax expectedType
+  let ty := exprToSyntax expectedType
   elabTerm (← `(have $n:ident : $ty := (do $b:doSeq); $body)) expectedType
 
 scoped syntax "_comefrom" ident "do" doSeq : term
@@ -299,7 +299,7 @@ open Impl
 This syntax is valid in `match`, `let`, and `if let`, but not `fun`.
 
 The usage is very similar to the builtin `Syntax`-matching that uses `` `(<pattern>) `` notation.
-As an example, consider matching against a `n : Q(ℕ)` where `n : Q(ℕ)`, which can be written
+As an example, consider matching against a `n : Q(ℕ)`, which can be written
 
 * With a `match` expression,
   ```
