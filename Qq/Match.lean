@@ -33,8 +33,7 @@ instance, as this is what is being used to elaborate the `+`.
 If the intent is to match an _arbitrary_ `Add α` instance in `x`,
 then you must match this with a `$inst` antiquotation:
 ```
-def isAdd {u : Level} {α : Q(Type u)} (x : Q($α)) :
-    MetaM <| Option (Q(Add $α) × Q($α) × Q($α)) := do
+def isAdd {u : Level} {α : Q(Type u)} (x : Q($α)) : MetaM (Option (Q($α) × Q($α))) := do
   match x with
   | ~q(@HAdd.hAdd _ _ _ (@instHAdd _ $inst) $a $b) => return some (inst, a, b)
   | _ => return none
@@ -133,6 +132,12 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLi
       let _pat' ← (unquoteExpr pat).run' s
       withLocalDeclDQ (← mkFreshUserName `match_eq) q(QuotedDefEq $discr $pat) fun h => do
         let res ← k expectedType
+        -- Elaborating the branch body may have postponed work (e.g. `q(·)`
+        -- postpones itself while the local context contains metavariables, which
+        -- is common inside nested `~q` matches). Synthesize it now, while the
+        -- match's local context is still available, instead of letting it leak
+        -- metavariables into the generated match code (quote4#126).
+        synthesizeSyntheticMVars (postpone := .no)
         let res : Q($m $γ) ← instantiateMVars res
         let res : Q($m $γ) := (← res.abstractM #[h]).instantiate #[q(⟨⟩ : QuotedDefEq $discr $pat)]
         return res
@@ -293,8 +298,8 @@ open Impl
 
 This syntax is valid in `match`, `let`, and `if let`, but not `fun`.
 
-The usage is very similar to the builtin `Syntax`-matching that uses `` `(<pattern>)`` notation.
-As an example, consider matching against a `n : Q(ℕ)`, which can be written
+The usage is very similar to the builtin `Syntax`-matching that uses `` `(<pattern>) `` notation.
+As an example, consider matching against a `n : Q(ℕ)` where `n : Q(ℕ)`, which can be written
 
 * With a `match` expression,
   ```
