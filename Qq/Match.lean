@@ -133,6 +133,12 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLi
       let _pat' ← (unquoteExpr pat).run' s
       withLocalDeclDQ (← mkFreshUserName `match_eq) q(QuotedDefEq $discr $pat) fun h => do
         let res ← k expectedType
+        -- Elaborating the branch body may have postponed work (e.g. `q(·)`
+        -- postpones itself while the local context contains metavariables, which
+        -- is common inside nested `~q` matches). Synthesize it now, while the
+        -- match's local context is still available, instead of letting it leak
+        -- metavariables into the generated match code (quote4#126).
+        synthesizeSyntheticMVars (postpone := .no)
         let res : Q($m $γ) ← instantiateMVars res
         let res : Q($m $γ) := (← res.abstractM #[h]).instantiate #[q(⟨⟩ : QuotedDefEq $discr $pat)]
         return res
