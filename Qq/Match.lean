@@ -9,7 +9,7 @@ public meta section
 # `~q()` matching
 
 This file extends the syntax of `match` and `let` to permit matching terms of type `Q(α)` using
-`~q(<pattern>)`, just as terms of type `Syntax` can be matched with `` `(<pattern>) ``.
+`~q(<pattern>)`, just as terms of type `Syntax` can be matched with `` `(<pattern>)``.
 Compare to the builtin `match_expr` and `let_expr`, `~q()` matching:
 * is type-safe, and so helps avoid many mistakes in match patterns
 * matches by definitional equality, rather than expression equality
@@ -31,10 +31,10 @@ Here, the `~q($a + $b)` match is specifically matching the addition against the 
 instance, as this is what is being used to elaborate the `+`.
 
 If the intent is to match an _arbitrary_ `Add α` instance in `x`,
-then you must match it with a `$inst` antiquotation:
+then you must match this with a `$inst` antiquotation:
 ```
 def isAdd {u : Level} {α : Q(Type u)} (x : Q($α)) :
-    MetaM <| Option (Q($α) × Q($α) × Q($α)) := do
+    MetaM <| Option (Q(Add $α) × Q($α) × Q($α)) := do
   match x with
   | ~q(@HAdd.hAdd _ _ _ (@instHAdd _ $inst) $a $b) => return some (inst, a, b)
   | _ => return none
@@ -46,6 +46,7 @@ By itself, `~q()` can only match against terms of the form `Q($α)`.
 To match an `Expr`, it must first be converted to Qq with `Qq.inferTypeQ`.
 
 For instance, to match an arbitrary expression for `n + 37` where `n : Nat`,
+we can write
 ```
 def isAdd37 (e : Expr) : MetaM (Option Q(Nat)) := do
   let ⟨1, ~q(Nat), ~q($n + 37)⟩ ← inferTypeQ e | return none
@@ -336,7 +337,7 @@ open Impl
 
 This syntax is valid in `match`, `let`, and `if let`, but not `fun`.
 
-The usage is very similar to the builtin `Syntax`-matching that uses `` `(<pattern>) `` notation.
+The usage is very similar to the builtin `Syntax`-matching that uses `` `(<pattern>)`` notation.
 As an example, consider matching against a `n : Q(ℕ)`, which can be written
 
 * With a `match` expression,
@@ -344,11 +345,11 @@ As an example, consider matching against a `n : Q(ℕ)`, which can be written
   match n with
   | ~q(Nat.gcd $x $y) => handleGcd x y
   | ~q($x + $y) => handleAdd x y
-  | _ => throwError "nonexhaustive match"
+  | _ => throwError "no match"
   ```
 * With a `let` expression (if there is a single match)
   ```
-  let ~q(Nat.gcd $x $y) := n | throwError "nonexhaustive match"
+  let ~q(Nat.gcd $x $y) := n | throwError "no match"
   handleGcd x y
   ```
 * With an `if let` statement
@@ -358,7 +359,7 @@ As an example, consider matching against a `n : Q(ℕ)`, which can be written
   else if let ~q($x + $y) := n then
     handleAdd x y
   else
-    throwError "nonexhaustive match"
+    throwError "no match"
   ```
 
 In addition to the obvious `x` and `y` captures,
