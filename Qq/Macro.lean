@@ -498,9 +498,55 @@ meta def withProcessPostponed [Monad m] [MonadFinally m] [MonadLiftT MetaM m] (k
   finally
     setPostponed (postponed ++ (← getPostponed))
 
-meta def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α × Array Name)) : TermElabM α := do
+/-- Collects the level parameters occurring in `e` or in the types of the free
+variables transitively referenced by `e`. -/
+private meta partial def Impl.collectLevelParams (e : Expr) (visited : FVarIdSet) (acc : Array Name) :
+    MetaM (FVarIdSet × Array Name) := do
+  let acc := (({} : CollectLevelParams.State).collect e).params.foldl (·.push ·) acc
+  let step (visited : FVarIdSet) (acc : Array Name) (sub : Expr) :
+      MetaM (FVarIdSet × Array Name) := do
+    if let .fvar id := sub then
+      if visited.contains id then
+        return (visited, acc)
+      let visited := visited.insert id
+      if let some d := (← getLCtx).find? id then
+        Impl.collectLevelParams (← instantiateMVars d.type) visited acc
+      else
+        return (visited, acc)
+    else
+      return (visited, acc)
+  let (visited, acc) ← step visited acc e
+  e.foldlM (init := (visited, acc)) fun st sub => step st.1 st.2 sub
+
+/-- For each identifier in the (macro-expanded) body of a quotation that
+resolves to a free variable of the quoted context and whose quoted type
+transitively mentions a level parameter (through the types of referenced
+antiquotations), returns the parameter name paired with the identifier syntax.
+These positions are used to record `TermInfo`s for level variables referenced
+through antiquotations, so that e.g. go-to-definition works on them. -/
+private meta partial def Impl.collectAntiquotLevelRefs (stx : Syntax) :
+    StateT (Array (Name × Syntax)) TermElabM Unit := do
+  match stx with
+  | .node _ kind args =>
+    -- Nested quotations are elaborated separately; do not descend.
+    unless kind == `Qq.«termq(__)» || kind == `Qq.«termQ(__)» do
+      for a in args do
+        Impl.collectAntiquotLevelRefs a
+  | .ident _ _ val _ =>
+    let lctx ← getLCtx
+    let ldecl? := lctx.findFromUserName? val
+      |>.orElse fun _ => lctx.findFromUserName? val.eraseMacroScopes
+    if let some ldecl := ldecl? then
+      let ty ← instantiateMVars ldecl.type
+      let (_, ns) ← Impl.collectLevelParams ty {} #[]
+      for n in ns do
+        modify (·.push (n, stx))
+  | _ => return
+
+meta def Impl.UnquoteState.withLevelNames (s : UnquoteState)
+    (k : TermElabM (α × Array Name × Array (Name × Syntax))) : TermElabM α := do
   Term.withLevelNames s.levelNames do
-    let (res, refdLevels) ← try k catch e =>
+    let (res, refdLevels, levelRefs) ← try k catch e =>
       if let some n := isAutoBoundImplicitLocalException? e then
         throwError "unsupported implicit auto-bound: {n} is not a level name"
       throw e
@@ -508,7 +554,12 @@ meta def Impl.UnquoteState.withLevelNames (s : UnquoteState) (k : TermElabM (α 
     for newLevelName in (← getLevelNames) do
       if let some fvar ← isLevelFVar newLevelName then
         if refdLevels.contains newLevelName then
-          addTermInfo' (← getRef) fvar
+          let rs := levelRefs.filter (·.1 == newLevelName)
+          if rs.isEmpty then
+            addTermInfo' (← getRef) fvar
+          else
+            for (_, ref) in rs do
+              addTermInfo' ref fvar
       else if (← read).autoBoundImplicitContext.isSome then
         throwAutoBoundImplicitLocal newLevelName
       else
@@ -522,7 +573,9 @@ scoped elab "ql(" l:level ")" : term => do
   let l ← s.withLevelNames do
     let l ← elabLevel l
     let refdLevels := (CollectLevelParams.collect (← instantiateLevelMVars l) {}).params
-    return (l, refdLevels)
+    let levelRefs ← refdLevels.mapM fun n => do
+      return (n, (← getRef))
+    return (l, refdLevels, levelRefs)
   quoteLevel l s
 
 /-- `a =QL b` says that the levels `a` and `b` are definitionally equal. -/
@@ -539,14 +592,16 @@ meta def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
   let lastDecl ← lastId.getDecl
 
   withRef t do s.withLevelNames do
-    withLCtx lastDecl.lctx lastDecl.localInstances do
+    let stx := t
+    let levelRefs ← withLCtx lastDecl.lctx lastDecl.localInstances do
       withProcessPostponed do withSynthesize do
-      let t ← Term.elabTerm t lastDecl.type
-      let t ← ensureHasType lastDecl.type t
-      synthesizeSyntheticMVars (postpone := .no)
-      if (← logUnassignedUsingErrorInfos (← getMVars t)) then
-        throwAbortTerm
-      lastId.assign t
+        let t ← Term.elabTerm t lastDecl.type
+        let t ← ensureHasType lastDecl.type t
+        synthesizeSyntheticMVars (postpone := .no)
+        if (← logUnassignedUsingErrorInfos (← getMVars t)) then
+          throwAbortTerm
+        lastId.assign t
+      (·.2) <$> (Impl.collectAntiquotLevelRefs stx).run #[]
 
     let refdLevels ← do
       let mut lvls : CollectLevelParams.State := {}
@@ -557,7 +612,7 @@ meta def Impl.macro (t : Syntax) (expectedType : Expr) : TermElabM Expr := do
         | _ => pure ()
       pure lvls.params
 
-    return ((), refdLevels)
+    return ((), refdLevels, levelRefs)
 
   for (mvar, synth) in s.mvars.reverse do
     if ← synth.isAssigned then
