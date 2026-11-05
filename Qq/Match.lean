@@ -367,11 +367,12 @@ partial def unpackParensIdent : Syntax → Option Syntax
   | stx => if stx.isIdent then some stx else none
 
 private partial def floatLevelAntiquot (stx : Syntax.Level) : StateT (Array Lift) MacroM Syntax.Level :=
-  if stx.1.isAntiquot && !stx.1.getAntiquotTerm.isIdent then
-    withFreshMacroScope do
-      let n : Ident ← `(u)
-      push (n, ← `(Level), ⟨stx.1.getAntiquotTerm⟩)
-      `(level| u)
+  if stx.1.isAntiquot && !stx.1.isEscapedAntiquot then
+    if !stx.1.getAntiquotTerm.isIdent then
+      withFreshMacroScope do
+        let n : Ident ← `(u)
+        push (n, ← `(Level), ⟨stx.1.getAntiquotTerm⟩)
+        `(level| u)
     else
       pure stx
   else
