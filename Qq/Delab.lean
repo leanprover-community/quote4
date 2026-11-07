@@ -20,16 +20,10 @@ register_option pp.qq : Bool := {
 }
 
 -- TODO: this probably exists in the library
-private meta def failureOnError (x : MetaM α) : DelabM α := do
-  let y : MetaM (Option α) := do try return some (← x) catch _ => return none
-  match ← y with
-    | some a => return a
-    | none => failure
-
-private meta def unquote (e : Expr) : UnquoteM (Expr × LocalContext) := do
-  unquoteLCtx
-  let newE ← unquoteExpr e
-  return (newE, (← get).unquoted)
+@[inline]
+private meta def failureOnError {m : Type u → Type v} {n : Type u → Type w}
+    [Monad n] [MonadLiftT m n] [Alternative m] [Alternative n] (x : m α) : n α := do
+  (← liftM (optional x)).getDM failure
 
 meta def checkQqDelabOptions : DelabM Unit := do
   unless ← getPPOption (·.getBool `pp.qq true) do failure
@@ -40,8 +34,7 @@ meta instance : MonadLift UnquoteM (StateT UnquoteState DelabM) where
 
 meta def delabQuoted : StateT UnquoteState DelabM Term := do
   let e ← getExpr
-  -- `(failure : DelabM _)` is of course completely different than `(failure : MetaM _)`...
-  let some newE ← (try some <$> unquoteExpr e catch _ => failure : UnquoteM _) | failure
+  let newE ← failureOnError (unquoteExpr e)
   let newLCtx := (← get).unquoted
   withLCtx newLCtx (← determineLocalInstances newLCtx) do
     withTheReader SubExpr (fun s => { s with expr := newE }) delab
@@ -50,7 +43,7 @@ meta def withDelabQuoted (k : StateT UnquoteState DelabM Term) : Delab :=
   withIncRecDepth do
   StateT.run' (s := { mayPostpone := false }) <|
   show StateT UnquoteState DelabM Term from do
-  unquoteLCtx
+  failureOnError unquoteLCtx
   let mut res ← k
   let showNested := `pp.qq._nested
   if (← getOptions).get showNested true then
