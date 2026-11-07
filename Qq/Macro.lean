@@ -131,7 +131,7 @@ meta partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
     | some e => whnf e (if isBad e then e0 else e)
     | none => pure e0
 
-meta def whnfR (e : Expr) : MetaM Expr :=
+meta def whnfR (e : Expr) (e0 : Expr := e) : MetaM Expr :=
   withReducible (whnf e)
 
 mutual
@@ -283,8 +283,7 @@ meta partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
       return .letE (← reduceEval (e.getArg! 0)) (← unquoteExpr (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
         (← unquoteExpr (e.getArg! 3)) (← reduceEval (e.getArg! 4))
     | ``Expr.lit, 1 => return .lit (← reduceEval (e.getArg! 0))
-    | ``Expr.proj, 3 =>
-      return .proj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
+    | ``Expr.proj, 3 => return .proj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
     | _, _ => throwError "unquoteExpr: {e} : {eTy}"
 
 end
@@ -414,7 +413,7 @@ meta partial def quoteExpr : Expr → QuoteM Expr
     return mkApp4 (.const ``Expr.forallE []) (toExpr $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
       (← quoteExpr t) (← quoteExpr b) (toExpr d)
   | .letE n t v b d => do
-    return mkApp5 (.const ``Expr.letE []) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d)
+    return mkApp5 (.const ``Expr.letE []) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (toExpr d)
   | .lit l => return mkApp (.const ``Expr.lit []) (toExpr l)
   | .proj n i e => return mkApp3 (.const ``Expr.proj []) (toExpr n) (toExpr i) (← quoteExpr e)
   | .mdata _ e => quoteExpr e
@@ -444,7 +443,7 @@ meta def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
       let eqFid ← mkFreshFVarId
       let level ← getLevel type
       let quotedLevel ← quoteLevel (← instantiateLevelMVars level)
-      let quotedValue ← quoteExpr (← instantiateMVars decl.value)
+      let quotedValue ← quoteExpr (← instantiateMVars (decl.value))
       quotedCtx := quotedCtx.mkLocalDecl eqFid (← mkFreshUserName (decl.userName.appendAfter "_eq"))
         (mkApp4 (mkConst ``QuotedDefEq) quotedLevel quotedType (.fvar fid) quotedValue)
       assignments := assignments.push
@@ -622,6 +621,36 @@ meta partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax)
     | Syntax.node i k args => return Syntax.node i k (← args.mapM floatLevelAntiquot')
     | stx => return stx
 
+/--
+Variant of `floatLevelAntiquot'` for the level list of an explicit universe
+annotation `x.{u, ...}`.
+
+A plain identifier antiquotation `$u` is replaced by the bare level `u` (rather than
+being floated out into a `let u' : Level := u` binding). Inside `q(·)` the level name
+`u` is linked back to the local `Level` variable by `unquoteLevelLCtx`/`withLevelNames`,
+so this behaves exactly like writing `x.{u}` directly. Floating would instead introduce a
+*fresh* level parameter `u'`, which elaboration cannot prove equal to occurrences of the
+original `u` arising from other antiquotations (e.g. the `T : Q(Sort u)` in
+`q(@id.{$u} $T $t)`): universe parameters compare by name and the term-level
+`let u' := u` is invisible to them.
+
+Composite antiquotations (e.g. `x.{$(u+1)}`) are floated into a `let` binding as before.
+-/
+meta partial def floatExplicitUnivLevel' [Monad m] [MonadQuotation m] (stx : Syntax) :
+    StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
+  if stx.isAntiquot && !stx.isEscapedAntiquot then
+    let term := stx.getAntiquotTerm
+    if term.isIdent && (stripDollars term.getId).isAtomic then
+      pure term
+    else
+      withFreshMacroScope do
+        push (← `(u)) (← `(Level)) (← floatExplicitUnivLevel' term)
+        `(u)
+  else
+    match stx with
+    | Syntax.node i k args => return Syntax.node i k (← args.mapM floatExplicitUnivLevel')
+    | stx => return stx
+
 open TSyntax.Compat in
 meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
@@ -642,7 +671,16 @@ meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
           return addSyntaxDollar <|<- `(a)
     else
       match stx with
-      | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatExprAntiquot' depth))
+      | Syntax.node i k args =>
+        -- `x.{u, ...}` (with `x` an identifier, `.ident`, or projection): the level list
+        -- (argument 2) may contain level antiquotations, which need the level treatment
+        -- of `floatExplicitUnivLevel'` (like `Type $u` and `Sort $u` above), while the
+        -- head is an ordinary term. At positive depth the antiquotations belong to an
+        -- inner quotation and the generic traversal below preserves them.
+        if depth == 0 && k == ``Lean.Parser.Term.explicitUniv then
+          return Syntax.node i k (← args.mapIdxM fun j arg =>
+            if j == 2 then floatExplicitUnivLevel' arg else floatExprAntiquot' depth arg)
+        return Syntax.node i k (← args.mapM (floatExprAntiquot' depth))
       | stx => pure stx
 
 open TSyntax.Compat in
