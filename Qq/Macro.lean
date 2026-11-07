@@ -131,7 +131,7 @@ meta partial def whnf (e : Expr) (e0 : Expr := e) : MetaM Expr := do
     | some e => whnf e (if isBad e then e0 else e)
     | none => pure e0
 
-meta def whnfR (e : Expr) (e0 : Expr := e) : MetaM Expr :=
+meta def whnfR (e : Expr) : MetaM Expr :=
   withReducible (whnf e)
 
 mutual
@@ -283,7 +283,8 @@ meta partial def unquoteExpr (e : Expr) : UnquoteM Expr := do
       return .letE (← reduceEval (e.getArg! 0)) (← unquoteExpr (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
         (← unquoteExpr (e.getArg! 3)) (← reduceEval (e.getArg! 4))
     | ``Expr.lit, 1 => return .lit (← reduceEval (e.getArg! 0))
-    | ``Expr.proj, 3 => return .proj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
+    | ``Expr.proj, 3 =>
+      return .proj (← reduceEval (e.getArg! 0)) (← reduceEval (e.getArg! 1)) (← unquoteExpr (e.getArg! 2))
     | _, _ => throwError "unquoteExpr: {e} : {eTy}"
 
 end
@@ -413,7 +414,7 @@ meta partial def quoteExpr : Expr → QuoteM Expr
     return mkApp4 (.const ``Expr.forallE []) (toExpr $ if b.hasLooseBVar 0 then n.eraseMacroScopes else Name.anonymous)
       (← quoteExpr t) (← quoteExpr b) (toExpr d)
   | .letE n t v b d => do
-    return mkApp5 (.const ``Expr.letE []) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (toExpr d)
+    return mkApp5 (.const ``Expr.letE []) (toExpr n.eraseMacroScopes) (← quoteExpr t) (← quoteExpr v) (← quoteExpr b) (toExpr d)
   | .lit l => return mkApp (.const ``Expr.lit []) (toExpr l)
   | .proj n i e => return mkApp3 (.const ``Expr.proj []) (toExpr n) (toExpr i) (← quoteExpr e)
   | .mdata _ e => quoteExpr e
@@ -443,7 +444,7 @@ meta def quoteLCtx (ctx : LocalContext) (levelNames : List Name) :
       let eqFid ← mkFreshFVarId
       let level ← getLevel type
       let quotedLevel ← quoteLevel (← instantiateLevelMVars level)
-      let quotedValue ← quoteExpr (← instantiateMVars (decl.value))
+      let quotedValue ← quoteExpr (← instantiateMVars decl.value)
       quotedCtx := quotedCtx.mkLocalDecl eqFid (← mkFreshUserName (decl.userName.appendAfter "_eq"))
         (mkApp4 (mkConst ``QuotedDefEq) quotedLevel quotedType (.fvar fid) quotedValue)
       assignments := assignments.push
