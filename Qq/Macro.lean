@@ -622,6 +622,36 @@ meta partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax)
     | Syntax.node i k args => return Syntax.node i k (← args.mapM floatLevelAntiquot')
     | stx => return stx
 
+/--
+Variant of `floatLevelAntiquot'` for the level list of an explicit universe
+annotation `x.{u, ...}`.
+
+A plain identifier antiquotation `$u` is replaced by the bare level `u` (rather than
+being floated out into a `let u' : Level := u` binding). Inside `q(·)` the level name
+`u` is linked back to the local `Level` variable by `unquoteLevelLCtx`/`withLevelNames`,
+so this behaves exactly like writing `x.{u}` directly. Floating would instead introduce a
+*fresh* level parameter `u'`, which elaboration cannot prove equal to occurrences of the
+original `u` arising from other antiquotations (e.g. the `T : Q(Sort u)` in
+`q(@id.{$u} $T $t)`): universe parameters compare by name and the term-level
+`let u' := u` is invisible to them.
+
+Composite antiquotations (e.g. `x.{$(u+1)}`) are floated into a `let` binding as before.
+-/
+meta partial def floatExplicitUnivLevel' [Monad m] [MonadQuotation m] (stx : Syntax) :
+    StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
+  if stx.isAntiquot && !stx.isEscapedAntiquot then
+    let term := stx.getAntiquotTerm
+    if term.isIdent && (stripDollars term.getId).isAtomic then
+      pure term
+    else
+      withFreshMacroScope do
+        push (← `(u)) (← `(Level)) (← floatExplicitUnivLevel' term)
+        `(u)
+  else
+    match stx with
+    | Syntax.node i k args => return Syntax.node i k (← args.mapM floatExplicitUnivLevel')
+    | stx => return stx
+
 open TSyntax.Compat in
 meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
     Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
@@ -642,7 +672,16 @@ meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
           return addSyntaxDollar <|<- `(a)
     else
       match stx with
-      | Syntax.node i k args => return Syntax.node i k (← args.mapM (floatExprAntiquot' depth))
+      | Syntax.node i k args =>
+        -- `x.{u, ...}` (with `x` an identifier, `.ident`, or projection): the level list
+        -- (argument 2) may contain level antiquotations, which need the level treatment
+        -- of `floatExplicitUnivLevel'` (like `Type $u` and `Sort $u` above), while the
+        -- head is an ordinary term. At positive depth the antiquotations belong to an
+        -- inner quotation and the generic traversal below preserves them.
+        if depth == 0 && k == ``Lean.Parser.Term.explicitUniv then
+          return Syntax.node i k (← args.mapIdxM fun j arg =>
+            if j == 2 then floatExplicitUnivLevel' arg else floatExprAntiquot' depth arg)
+        return Syntax.node i k (← args.mapM (floatExprAntiquot' depth))
       | stx => pure stx
 
 open TSyntax.Compat in
