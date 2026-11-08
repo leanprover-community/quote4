@@ -175,7 +175,7 @@ meta partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
   if e.isAppOfArity ``List.nil 1 then
     pure []
   else if e.isAppOfArity ``List.cons 3 then
-    return (← unquoteExpr (e.getArg! 1)) :: (← unquoteLevelList (e.getArg! 2))
+    return (← unquoteLevel (e.getArg! 1)) :: (← unquoteLevelList (e.getArg! 2))
   else
     throwFailedToEval e
 
@@ -638,7 +638,7 @@ meta partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax)
 
 open TSyntax.Compat in
 meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
-    StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
+    Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
   | `(Q($x)) => do `(Q($(← floatExprAntiquot' (depth + 1) x)))
   | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot' term))
