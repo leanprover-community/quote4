@@ -175,7 +175,7 @@ meta partial def unquoteLevelList (e : Expr) : UnquoteM (List Level) := do
   if e.isAppOfArity ``List.nil 1 then
     pure []
   else if e.isAppOfArity ``List.cons 3 then
-    return (← unquoteLevel (e.getArg! 1)) :: (← unquoteLevelList (e.getArg! 2))
+    return (← unquoteExpr (e.getArg! 1)) :: (← unquoteLevelList (e.getArg! 2))
   else
     throwFailedToEval e
 
@@ -345,8 +345,22 @@ meta def unquoteLCtx : UnquoteM Unit := do
         -- exprSubst := s.exprSubst.insert fv fv
       }
     else
-      let .succ u ← getLevel ty | pure ()
-      let LOption.some inst ← trySynthInstance (mkApp (.const ``ToExpr [u]) ty) | pure ()
+      let ty ← instantiateMVars ty
+      let keepUnquoted : UnquoteM Unit := do
+        -- A declaration that cannot be auto-quoted (no `ToExpr` instance, or its type
+        -- still an unassigned metavariable, as happens for the inferred type of a
+        -- `do`-block `let` without annotation) cannot be used in antiquotations, but
+        -- later declarations may still refer to it in their types or let-values.
+        -- Dropping it left those references dangling, producing `unknown free variable`
+        -- errors (issue #8), so keep it in the unquoted context.
+        -- `Level` and `QuotedLevelDefEq` declarations are handled by `unquoteLevelLCtx`
+        -- above, and auxiliary declarations require `auxDeclToFullName` registration
+        -- (issue #105), so both keep being skipped.
+        unless whnfTy.isAppOfArity ``QuotedLevelDefEq 2 || whnfTy.isAppOfArity ``Level 0 do
+          unless ldecl.kind == .auxDecl do
+            modify fun s => { s with unquoted := s.unquoted.addDecl ldecl }
+      let .succ u ← getLevel ty | keepUnquoted
+      let LOption.some inst ← trySynthInstance (mkApp (.const ``ToExpr [u]) ty) | keepUnquoted
       modify fun s => { s with
         unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
         exprBackSubst := s.exprBackSubst.insert fv (.quoted (mkApp3 (.const ``toExpr [u]) ty inst fv))
@@ -624,7 +638,7 @@ meta partial def floatLevelAntiquot' [Monad m] [MonadQuotation m] (stx : Syntax)
 
 open TSyntax.Compat in
 meta partial def floatExprAntiquot' [Monad m] [MonadQuotation m] (depth : Nat) :
-    Syntax → StateT (Array $ Syntax × Syntax × Syntax) m Syntax
+    StateT (Array $ Syntax × Syntax × Syntax) m Syntax :=
   | `(Q($x)) => do `(Q($(← floatExprAntiquot' (depth + 1) x)))
   | `(q($x)) => do `(q($(← floatExprAntiquot' (depth + 1) x)))
   | `(Type $term) => do `(Type $(← floatLevelAntiquot' term))
