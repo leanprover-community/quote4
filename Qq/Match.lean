@@ -15,6 +15,9 @@ Compare to the builtin `match_expr` and `let_expr`, `~q()` matching:
 * matches by definitional equality, rather than expression equality
 * supports compound expressions, not just a single application
 
+The variant `~q!(<pattern>)` matches by structural equality instead: no definitions
+(not even `@[reducible]` ones) are unfolded during the match test.
+
 See `Qq.matcher` for a brief syntax summary.
 
 ## Matching typeclass instances
@@ -79,22 +82,30 @@ def mkInstantiateMVars (decls : List PatVarDecl) : List PatVarDecl → MetaM Q(M
       mkLambdaQ _ decl.fvar q($(← mkInstantiateMVars decls rest))
     return q(Bind.bind (instantiateMVars $(decl.fvar)) $instMVars)
 
-def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
+def mkIsDefEqCore (structural : Bool) (decls : List PatVarDecl) (pat discr : Q(Expr)) :
     List PatVarDecl → MetaM Q(MetaM $(mkIsDefEqType decls))
   | { ty := none, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := none, fvarId := fvarId, userName := userName }
-    return q(Bind.bind mkFreshLevelMVar $(← mkLambdaQ `x decl.fvar (← mkIsDefEqCore decls pat discr rest)))
+    return q(Bind.bind mkFreshLevelMVar $(← mkLambdaQ `x decl.fvar (← mkIsDefEqCore structural decls pat discr rest)))
   | { ty := some ty, fvarId := fvarId, userName := userName } :: rest =>
     let decl : PatVarDecl := { ty := some ty, fvarId := fvarId, userName := userName }
-    return q(Bind.bind (mkFreshExprMVar $ty) $(← mkLambdaQ `x decl.fvar (← mkIsDefEqCore decls pat discr rest)))
+    return q(Bind.bind (mkFreshExprMVar $ty) $(← mkLambdaQ `x decl.fvar (← mkIsDefEqCore structural decls pat discr rest)))
   | [] => do
     let instMVars ← mkInstantiateMVars decls decls
-    return q(do
-      let matches? ← withReducible $ isDefEq $pat $discr
-      (if matches? then $instMVars else return $(mkIsDefEqResult false decls)))
+    if structural then
+      -- `.none` transparency performs no delta-unfolding at all, so constants compare
+      -- by name and the match is purely structural (modulo β/η and metavariable
+      -- assignment for the antiquotations).
+      return q(do
+        let matches? ← withTransparency .none $ isDefEq $pat $discr
+        (if matches? then $instMVars else return $(mkIsDefEqResult false decls)))
+    else
+      return q(do
+        let matches? ← withReducible $ isDefEq $pat $discr
+        (if matches? then $instMVars else return $(mkIsDefEqResult false decls)))
 
-def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : MetaM Q(MetaM $(mkIsDefEqType decls)) := do
-  return q(withNewMCtxDepth $(← mkIsDefEqCore decls pat discr decls))
+def mkIsDefEq (structural : Bool) (decls : List PatVarDecl) (pat discr : Q(Expr)) : MetaM Q(MetaM $(mkIsDefEqType decls)) := do
+  return q(withNewMCtxDepth $(← mkIsDefEqCore structural decls pat discr decls))
 
 def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLiftT MetaM m] [MonadLCtx m]
     (fvarId : FVarId) (userName : Name) (val : (Quoted α)) (k : (Quoted α) → m (Quoted β)) : m (Quoted β) := do
@@ -118,6 +129,7 @@ def replaceTempExprsByQVars : List PatVarDecl → Expr → Expr
     replaceTempExprsByQVars decls e
 
 def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLiftT MetaM $m)) (_instBind : Q(Bind $m))
+    (structural : Bool)
     (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(Quoted (.sort $uTy)))
     (pat discr : Q(Quoted $ty)) (alt : Q($m $γ)) (expectedType : Expr)
     (k : Expr → TermElabM Q($m $γ)) : TermElabM Q($m $γ) := do
@@ -143,7 +155,7 @@ def makeMatchCode {γ : Q(Type)} {m : Q(Type → Type v)} (_instLift : Q(MonadLi
           $alt)
     return show Q($(mkIsDefEqType decls) → $m $γ) from
       Quoted.unsafeMk $ ← mkLambda' `__result fv (mkIsDefEqType decls) next
-  pure q(Bind.bind $(← mkIsDefEq decls pat discr) $next)
+  pure q(Bind.bind $(← mkIsDefEq structural decls pat discr) $next)
 
 def unquoteForMatch (et : Expr) : UnquoteM (LocalContext × LocalInstances × Expr) := do
   unquoteLCtx
@@ -224,7 +236,8 @@ def elabPat (pat : Term) (lctx : LocalContext) (localInsts : LocalInstances) (ty
               ← sortLocalDecls (← newDecls.mapM fun d => instantiateLocalDeclMVars d),
               r.newParamNames)
 
-scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term : term <= expectedType => do
+def elabQqMatch (structural : Bool) (pat e alt body : Term) (expectedType : Expr) :
+    TermElabM Expr := do
   let emr ← extractBind expectedType
   let alt ← elabTermEnsuringType alt expectedType
 
@@ -254,13 +267,23 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   let inst2 ← synthInstanceQ q(MonadLiftT MetaM $m)
   have synthed : Q(Expr) := (← quoteExpr (← instantiateMVars pat) s)
   let alt : Q($m $γ) := alt
-  makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
+  makeMatchCode q($inst2) inst structural oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
     return Quoted.unsafeMk (← elabTerm body expectedType)
 
+scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term : term <= expectedType =>
+  elabQqMatch false pat e alt body expectedType
+
+/-- Structural variant of `_qq_match`: no definition unfolding during the match test. -/
+scoped elab "_qq_match_struct" pat:term " ← " e:term " | " alt:term " in " body:term : term <= expectedType =>
+  elabQqMatch true pat e alt body expectedType
+
 scoped syntax "_qq_match" term " := " term " | " doSeqIndent : term
+scoped syntax "_qq_match_struct" term " := " term " | " doSeqIndent : term
 macro_rules
   | `(assert! (_qq_match $pat := $e | $alt); $x) =>
     `(_qq_match $pat ← $e | (do $alt:doSeqIndent) in $x)
+  | `(assert! (_qq_match_struct $pat := $e | $alt); $x) =>
+    `(_qq_match_struct $pat ← $e | (do $alt:doSeqIndent) in $x)
 
 partial def isIrrefutablePattern : Term → Bool
   | `(($stx)) => isIrrefutablePattern stx
@@ -323,15 +346,38 @@ in the example above `~q` also inserts into the context a term of type `$n =Q Na
 -/
 scoped syntax (name := matcher) "~q(" term ")" : term
 
+/--
+`Qq`s *structural* expression matching in `MetaM`, a variant of `~q`.
+
+`~q!(<pattern>)` behaves exactly like `~q(<pattern>)`, except that the match test compares
+the pattern with the discriminant without unfolding any definitions
+(`withTransparency .none`): constants compare by name, and `@[reducible]` definitions are
+*not* unfolded. Antiquotations still capture subexpressions as usual
+(metavariable assignment, β/η are unaffected by the transparency setting).
+
+Use this when only exact syntactic matches are desired; besides being more predictable,
+it avoids the definition unfolding that `~q` performs (at reducible transparency),
+which can be significantly cheaper for large expressions.
+
+Like `~q`, this syntax is valid in `match`, `let`, and `if let`.
+-/
+scoped syntax (name := matcherStructural) "~q!(" term ")" : term
+
 partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($_)) => true
+  | `(~q!($_)) => true
   | stx => stx.getArgs.any hasQMatch
 
-partial def Impl.floatQMatchPairs : Term → StateT (Array (Term × Ident)) MacroM Term
+partial def Impl.floatQMatchPairs : Term → StateT (Array (Term × Ident × Bool)) MacroM Term
   | `(~q($term)) =>
     withFreshMacroScope do
       let x : Ident ← `(x)
-      modify (·.push (term, x))
+      modify (·.push (term, x, false))
+      `($x)
+  | `(~q!($term)) =>
+    withFreshMacroScope do
+      let x : Ident ← `(x)
+      modify (·.push (term, x, true))
       `($x)
   | stx => do match stx with
     | ⟨.node i k args⟩ => return ⟨.node i k (← args.mapM (floatQMatchPairs ⟨·⟩))⟩
@@ -406,13 +452,20 @@ private def buildPatternTerm (discr : Term) (pat : Term) (body : Term) : MacroM 
     -- directly preserves the type at the relevant elaboration phase.
     let (inner, lifts) ← (floatExprAntiquot 0 inner).run #[]
     liftsToTermLet lifts (← `(_qq_match $inner ← $discr | __alt in $body))
+  | `(~q!($inner)) =>
+    -- Whole-pattern `~q!(...)`: same fast path, routed to the structural variant.
+    let (inner, lifts) ← (floatExprAntiquot 0 inner).run #[]
+    liftsToTermLet lifts (← `(_qq_match_struct $inner ← $discr | __alt in $body))
   | _ =>
     if hasQMatch pat then
       let (pat', auxPairs) ← (floatQMatchPairs pat).run #[]
       let mut body := body
-      for (innerPat, varName) in auxPairs.reverse do
+      for (innerPat, varName, structural) in auxPairs.reverse do
         let (innerPat, lifts) ← (floatExprAntiquot 0 innerPat).run #[]
-        body ← liftsToTermLet lifts (← `(_qq_match $innerPat ← $varName | __alt in $body))
+        if structural then
+          body ← liftsToTermLet lifts (← `(_qq_match_struct $innerPat ← $varName | __alt in $body))
+        else
+          body ← liftsToTermLet lifts (← `(_qq_match $innerPat ← $varName | __alt in $body))
       if isIrrefutablePattern pat' then
         -- Multi-q irrefutable case (e.g. `(~q(X), ~q(Y))`): the let destructures `discr`
         -- via the pattern, which propagates component types to the inner `_qq_match`s.
@@ -437,6 +490,15 @@ macro_rules
         -- common `let ~q(..) := .. | alt` form.
         let (pat, lifts) ← floatExprAntiquot 0 pat #[]
         let t ← `(doSeqItem| assert! (_qq_match $pat := $rhs | $alt))
+        let mut items := (← liftsToDoItems lifts).push t
+        if let some body := body? then
+          items := items.push (← `(doSeqItem| do $body:doSeqIndent))
+        `(doElem| do $items:doSeqItem*)
+
+      | `(~q!($pat)) =>
+        -- Same direct route for the structural variant.
+        let (pat, lifts) ← floatExprAntiquot 0 pat #[]
+        let t ← `(doSeqItem| assert! (_qq_match_struct $pat := $rhs | $alt))
         let mut items := (← liftsToDoItems lifts).push t
         if let some body := body? then
           items := items.push (← `(doSeqItem| do $body:doSeqIndent))
