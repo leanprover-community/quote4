@@ -96,6 +96,24 @@ def mkIsDefEqCore (decls : List PatVarDecl) (pat discr : Q(Expr)) :
 def mkIsDefEq (decls : List PatVarDecl) (pat discr : Q(Expr)) : MetaM Q(MetaM $(mkIsDefEqType decls)) := do
   return q(withNewMCtxDepth $(← mkIsDefEqCore decls pat discr decls))
 
+/--
+Run the quotation match without embedding a continuation in its generated `bind`.
+On success, return the pattern variables together with the `match_eq` proof.
+This is used by the `do`-specific `if let` expansion, whose branches can then be
+elaborated directly by Lean's `do` elaborator (important for `let mut`).
+-/
+def mkIsDefEqOption (decls : List PatVarDecl) (uTy : Q(Level)) (ty : Q(Quoted (.sort $uTy)))
+    (pat discr : Q(Quoted $ty)) : MetaM Expr := do
+  let test ← mkIsDefEq decls pat discr
+  withLocalDeclDQ (← mkFreshBinderName) (mkIsDefEqType decls) fun res => do
+    let resultTy : Q(Type) := q(Option (PProd $(mkIsDefEqType decls) (QuotedDefEq $discr $pat)))
+    let body : Q(MetaM $resultTy) :=
+      q(if $(mkIsDefEqResultVal decls res) then
+          return some ⟨$res, ⟨⟩⟩
+        else
+          return none)
+    return q(Bind.bind $test $(← mkLambdaQ `__result res body))
+
 def withLetHave [Monad m] [MonadControlT MetaM m] [MonadLiftT MetaM m] [MonadLCtx m]
     (fvarId : FVarId) (userName : Name) (val : (Quoted α)) (k : (Quoted α) → m (Quoted β)) : m (Quoted β) := do
   withExistingLocalDecls [LocalDecl.cdecl default fvarId userName α .default .default] do
@@ -257,6 +275,32 @@ scoped elab "_qq_match" pat:term " ← " e:term " | " alt:term " in " body:term 
   makeMatchCode q($inst2) inst oldPatVarDecls argLvlExpr argTyExpr synthed q($e') alt expectedType fun expectedType =>
     return Quoted.unsafeMk (← elabTerm body expectedType)
 
+/-- Elaborate a quotation match to an optional result, without capturing a branch continuation. -/
+scoped elab "_qq_match_option" pat:term " ← " e:term : term <= expectedType => do
+  let argLvlExpr ← mkFreshExprMVarQ q(Level)
+  let argTyExpr ← mkFreshExprMVarQ q(Quoted (.sort $argLvlExpr))
+  let e' ← elabTermEnsuringTypeQ e q(Quoted $argTyExpr)
+  let argTyExpr ← instantiateMVarsQ argTyExpr
+
+  let ((lctx, localInsts, type), s) ← (unquoteForMatch argTyExpr).run { mayPostpone := (← read).mayPostpone }
+  let (pat, patVarDecls, newLevels) ← elabPat pat lctx localInsts type s.levelNames
+
+  let mut s := s
+  let mut oldPatVarDecls : List PatVarDecl := []
+  for newLevel in newLevels do
+    let fvarId := FVarId.mk (← mkFreshId)
+    oldPatVarDecls := oldPatVarDecls ++ [{ ty := none, fvarId := fvarId, userName := newLevel }]
+    s := { s with levelBackSubst := s.levelBackSubst.insert (.param newLevel) (.fvar fvarId) }
+
+  for ldecl in patVarDecls do
+    let qty ← (quoteExpr ldecl.type).run s
+    oldPatVarDecls := oldPatVarDecls ++ [{ ty := some qty, fvarId := ldecl.fvarId, userName := ldecl.userName }]
+    s := { s with exprBackSubst := s.exprBackSubst.insert ldecl.toExpr (.quoted ldecl.toExpr) }
+
+  have synthed : Q(Expr) := (← quoteExpr (← instantiateMVars pat) s)
+  let test ← mkIsDefEqOption oldPatVarDecls argLvlExpr argTyExpr synthed q($e')
+  elabTermEnsuringType (← `(liftM $(← exprToSyntax test))) expectedType
+
 scoped syntax "_qq_match" term " := " term " | " doSeqIndent : term
 macro_rules
   | `(assert! (_qq_match $pat := $e | $alt); $x) =>
@@ -326,6 +370,16 @@ scoped syntax (name := matcher) "~q(" term ")" : term
 partial def Impl.hasQMatch : Syntax → Bool
   | `(~q($_)) => true
   | stx => stx.getArgs.any hasQMatch
+
+/-- Whether a quotation pattern binds any expression antiquotation variables. -/
+partial def Impl.hasPatVar (pat : Term) : Bool :=
+  if pat.1.isAntiquot && !pat.1.isEscapedAntiquot && pat.1.getAntiquotTerm.isIdent &&
+      pat.1.getAntiquotTerm.getId.isAtomic then
+    true
+  else
+    match pat with
+    | ⟨.node _ _ args⟩ => args.any fun arg => hasPatVar ⟨arg⟩
+    | _ => false
 
 partial def Impl.floatQMatchPairs : Term → StateT (Array (Term × Ident)) MacroM Term
   | `(~q($term)) =>
@@ -421,6 +475,27 @@ private def buildPatternTerm (discr : Term) (pat : Term) (body : Term) : MacroM 
         `(match $discr:term with | $pat' => $body | _ => __alt)
     else
       `(match $discr:term with | $pat => $body | _ => __alt)
+
+macro_rules
+  | `(doElem| if%$_tk $cond:doIfCond then $thenBranch
+      $[else if%$_tks $_conds:doIfCond then $_ts]* $[else $elseBranch?]?) => do
+    unless _tks.isEmpty do Macro.throwUnsupported
+    let `(doIfCond| let ~q($pat) := $rhs) := cond | Macro.throwUnsupported
+    -- Run the quotation test before the ordinary `do` match. Unlike `_qq_match`,
+    -- this does not put the branches inside the matcher's generated `bind` lambda,
+    -- so Lean's `do` elaborator retains outer `let mut` variables and control flow.
+    let (pat, lifts) ← (floatExprAntiquot 0 pat).run #[]
+    -- Capture-bearing patterns still need the continuation-based `_qq_match` path:
+    -- returning their variables and dependent `match_eq` proof is a larger change.
+    if hasPatVar pat then Macro.throwUnsupported
+    let elseBranch : Syntax ← elseBranch?.getDM `(doSeq| pure PUnit.unit)
+    withFreshMacroScope do
+      let matchEq : Ident ← `(match_eq)
+      let test ← liftsToTermLet lifts (← `(_qq_match_option $pat ← $rhs))
+      `(doElem|
+        match ← $test:term with
+        | some ⟨_, $matchEq⟩ => $thenBranch
+        | none => $(⟨elseBranch⟩))
 
 macro_rules
   | `(doElem| let $pat:term := $_) => do
