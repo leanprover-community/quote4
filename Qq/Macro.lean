@@ -312,6 +312,36 @@ meta def unquoteLevelLCtx (addDefEqs := true) : UnquoteM Unit := do
         if let .param n := u' then if !u'.occurs v' then substLevel n v'; continue
         if let .param n := v' then if !v'.occurs u' then substLevel n u'; continue
 
+/--
+Adds a copy of a declaration of the current local context to the unquoted local context
+`unquoted`, as a `.cdecl` with the given fvar, user name, type, and binder info.
+
+Auxiliary declarations (kind `.auxDecl`), such as the free variable referring to the enclosing
+declaration while its body is being elaborated, must be created with `LocalContext.mkAuxDecl`
+so that `auxDeclToFullName` stays populated: `LocalContext.mkLocalDecl` with
+`kind := .auxDecl` produces an auxiliary declaration without an associated full name, and
+`Lean.instantiateLCtxMVars` panics on such declarations.
+-/
+meta def mkCopiedLocalDecl (unquoted : LocalContext) (fvarId : FVarId) (userName : Name)
+    (type : Expr) (bi : BinderInfo) (kind : LocalDeclKind) : UnquoteM LocalContext := do
+  if kind == .auxDecl then
+    match (← getLCtx).auxDeclToFullName.get? fvarId with
+    | some fullName => return unquoted.mkAuxDecl fvarId userName type fullName
+    | none => return unquoted.mkLocalDecl fvarId userName type bi
+  else
+    return unquoted.mkLocalDecl fvarId userName type bi kind
+
+/--
+Adds a copy of the local declaration `ldecl` of the current local context to the unquoted
+local context `unquoted`. See `mkCopiedLocalDecl` for the treatment of auxiliary declarations.
+-/
+meta def addCopiedLocalDecl (unquoted : LocalContext) (ldecl : LocalDecl) : UnquoteM LocalContext := do
+  match ldecl with
+  | .cdecl _ fvarId userName type bi kind =>
+    mkCopiedLocalDecl unquoted fvarId userName type bi kind
+  | .ldecl .. =>
+    return unquoted.addDecl ldecl
+
 meta def unquoteLCtx : UnquoteM Unit := do
   unquoteLevelLCtx
   for ldecl in (← getLCtx) do
@@ -323,9 +353,10 @@ meta def unquoteLCtx : UnquoteM Unit := do
     if whnfTy.isAppOfArity ``Quoted 1 then
       let qTy := whnfTy.appArg!
       let newTy ← unquoteExpr qTy
+      let unquoted ← mkCopiedLocalDecl (← get).unquoted
+        ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo ldecl.kind
       modify fun s => { s with
-        unquoted := s.unquoted.mkLocalDecl
-          ldecl.fvarId (addDollar ldecl.userName) newTy ldecl.binderInfo ldecl.kind
+        unquoted
         exprBackSubst := s.exprBackSubst.insert fv (.quoted fv)
         exprSubst := s.exprSubst.insert fv fv
       }
@@ -335,8 +366,7 @@ meta def unquoteLCtx : UnquoteM Unit := do
       let lhs ← unquoteExpr (whnfTy.getArg! 2)
       let rhs ← unquoteExpr (whnfTy.getArg! 3)
       let eqTy := mkApp3 (.const ``Eq [tyLevel]) ty lhs rhs
-      let unquoted := (← get).unquoted
-      let unquoted := unquoted.mkLocalDecl
+      let unquoted ← mkCopiedLocalDecl (← get).unquoted
         ldecl.fvarId (addDollar ldecl.userName) eqTy ldecl.binderInfo ldecl.kind
       let unquoted := (← withUnquotedLCtx do makeDefEq lhs rhs).getD unquoted
       modify fun s => { s with
@@ -347,8 +377,9 @@ meta def unquoteLCtx : UnquoteM Unit := do
     else
       let .succ u ← getLevel ty | pure ()
       let LOption.some inst ← trySynthInstance (mkApp (.const ``ToExpr [u]) ty) | pure ()
+      let unquoted ← addCopiedLocalDecl (← get).unquoted (ldecl.setUserName (addDollar ldecl.userName))
       modify fun s => { s with
-        unquoted := s.unquoted.addDecl (ldecl.setUserName (addDollar ldecl.userName))
+        unquoted
         exprBackSubst := s.exprBackSubst.insert fv (.quoted (mkApp3 (.const ``toExpr [u]) ty inst fv))
         exprSubst := s.exprSubst.insert fv fv
       }
