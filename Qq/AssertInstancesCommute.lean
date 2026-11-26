@@ -48,7 +48,7 @@ elab_rules : term <= expectedType | `(assertInstancesCommuteImpl $cont) => do
   | some ⟨fvar, _, _, lhs, rhs⟩ =>
     let n ← mkFreshUserName ((← fvar.getUserName).eraseMacroScopes.appendAfter "_eq")
     let cmd := q(withNewMCtxDepth do withDefault do assertDefEqQ $lhs $rhs)
-    elabTerm (← `($(← exprToSyntax cmd) >>=
+    elabTerm (← `(monadLift (m := MetaM) $(← exprToSyntax cmd) >>=
         fun __defeqres =>
           have $(mkIdent n) := __defeqres.1
           assertInstancesCommuteImpl $cont))
